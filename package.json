@@ -1,0 +1,27 @@
+{
+  "name": "wr-ai",
+  "version": "1.0.0",
+  "description": "一个用于管理 AI 模板的 CLI 工具",
+  "type": "module",
+  "main": "src/index.js",
+  "bin": {
+    "wr-ai": "./src/index.js"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "@clack/prompts": "^0.11.0",
+    "commander": "^14.0.2",
+    "ora": "^9.0.0",
+    "yoctocolors": "^2.1.2"
+  },
+  "keywords": [
+    "cli",
+    "template",
+    "ai"
+  ],
+  "author": "woic",
+  "license": "MIT",
+  "packageManager": "pnpm@10.17.0"
+}
