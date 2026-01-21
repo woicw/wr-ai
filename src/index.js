@@ -6,6 +6,7 @@ import { handleInit } from "./commands/init.js";
 import { handleList } from "./commands/list.js";
 import { handleUpdate } from "./commands/update.js";
 import { handleClear } from "./commands/clear.js";
+import { handleAdd } from "./commands/add.js";
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
@@ -35,15 +36,18 @@ setCommand
 
 program
   .command("init")
-  .description("初始化模板到当前目录")
-  .option("--template <template-name>", "指定模板名称")
-  .action(async (options) => {
-    await handleInit(options.template);
-  });
+  .description("初始化配置到当前目录")
+  .action(handleInit);
 
-program.command("list").description("列出所有可用的模板").action(handleList);
+program.command("list").description("列出所有可用配置").action(handleList);
 
-program.command("update").description("更新模板仓库").action(handleUpdate);
+program
+  .command("add")
+  .description("添加指定的 command 或 skill")
+  .argument("<name>", "command 或 skill 名称")
+  .action(handleAdd);
+
+program.command("update").description("更新配置").action(handleUpdate);
 
 program
   .command("clear")

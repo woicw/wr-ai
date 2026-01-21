@@ -1,88 +1,107 @@
 import { getOrigin } from '../config.js';
-import { cloneOrUpdateRepo, getTemplatesDir } from '../github.js';
-import { copyDirectory, ensureClaudeDir, listFilesRecursive, copyFileOrDir } from '../fileOps.js';
+import { cloneOrUpdateRepo, getRepoDir } from '../github.js';
+import { copyFileOrDir, ensureClaudeDir } from '../fileOps.js';
 import { select, multiselect, log } from '@clack/prompts';
 import ora from 'ora';
 import fs from 'fs';
 import path from 'path';
+import * as c from 'yoctocolors';
+
+// 需要排除的文件/文件夹
+const EXCLUDE_LIST = ['.git', '.gitignore', 'package.json', 'package-lock.json', 'node_modules', 'README.md'];
+// 默认配置来源
+const DEFAULT_SOURCE = 'awesome-claude';
 
 export async function handleUpdate() {
   const origin = getOrigin();
   if (!origin) {
-    log.error('请先使用 "wr-ai set origin <url>" 设置 GitHub 地址');
+    log.error('请先使用 "wr-ai set github <url>" 设置 GitHub 地址');
     process.exit(1);
   }
 
-  const spinner = ora('正在更新模板...').start();
+  const spinner = ora('正在更新配置...').start();
 
   try {
-    // 克隆或更新仓库
     await cloneOrUpdateRepo(origin);
+    const repoDir = getRepoDir(origin);
 
-    // 获取模板目录
-    const templatesDir = getTemplatesDir(origin);
-
-    // 读取所有模板
-    const templates = fs.readdirSync(templatesDir, { withFileTypes: true })
-      .filter((item) => item.isDirectory())
+    // 读取根目录下的所有目录
+    const items = fs.readdirSync(repoDir, { withFileTypes: true })
+      .filter((item) => item.isDirectory() && !EXCLUDE_LIST.includes(item.name))
       .map((item) => item.name);
 
-    if (templates.length === 0) {
-      spinner.fail('未找到任何模板');
+    if (items.length === 0) {
+      spinner.fail('仓库中未找到可用配置');
       process.exit(1);
     }
 
     spinner.stop();
 
-    // 让用户选择模板
-    const templateResult = await select({
-      message: '请选择要更新的模板:',
-      options: templates.map((template) => ({
-        value: template,
-        label: template,
-      })),
-    });
+    // 确定配置来源
+    let sourceDir;
+    if (items.includes(DEFAULT_SOURCE)) {
+      sourceDir = DEFAULT_SOURCE;
+    } else {
+      const result = await select({
+        message: '请选择配置来源:',
+        options: items.map((name) => ({ value: name, label: `📁 ${name}/` })),
+      });
 
-    if (typeof templateResult === 'symbol') {
-      log.info('已取消');
+      if (typeof result === 'symbol') {
+        log.info('已取消');
+        process.exit(0);
+      }
+      sourceDir = result;
+    }
+
+    const sourcePath = path.join(repoDir, sourceDir);
+    const commandsDir = path.join(sourcePath, 'commands');
+    const skillsDir = path.join(sourcePath, 'skills');
+
+    // 获取 commands 列表
+    const commands = fs.existsSync(commandsDir)
+      ? fs.readdirSync(commandsDir)
+        .filter((f) => f.endsWith('.md'))
+        .map((f) => f.replace('.md', ''))
+      : [];
+
+    // 获取 skills 列表
+    const skills = fs.existsSync(skillsDir)
+      ? fs.readdirSync(skillsDir, { withFileTypes: true })
+        .filter((d) => d.isDirectory())
+        .map((d) => d.name)
+      : [];
+
+    if (commands.length === 0 && skills.length === 0) {
+      log.warn('配置目录为空');
       process.exit(0);
     }
 
-    const selectedTemplate = templateResult;
-    const templatePath = path.join(templatesDir, selectedTemplate);
-
-    // 列出模板下的所有文件
-    const files = listFilesRecursive(templatePath);
-
-    if (files.length === 0) {
-      log.warn('模板目录为空');
-      process.exit(0);
-    }
-
-    // 准备文件选项（添加 all 选项）
-    const fileOptions = [
-      {
-        value: '__all__',
-        label: '✨ ALL - 更新所有文件',
-        hint: '将替换整个 .claude 文件夹',
-      },
-      ...files.map((file) => {
-        const filePath = path.join(templatePath, file);
-        const isDir = fs.statSync(filePath).isDirectory();
-        return {
-          value: file,
-          label: isDir ? `📁 ${file}/` : `📄 ${file}`,
-        };
-      }),
+    // 构建选项：分组显示
+    const options = [
+      { value: '__all__', label: c.bold(c.magenta('⚡ ALL - 更新所有配置')), hint: c.dim('替换全部 commands 和 skills') },
     ];
 
-    // 循环选择文件，直到用户选择文件或取消
-    let selectedFiles = [];
+    if (commands.length > 0) {
+      options.push({ value: '__all_commands__', label: c.cyan('🔧 ALL Commands'), hint: c.dim(`全部 ${commands.length} 个`) });
+      commands.forEach((cmd) => {
+        options.push({ value: `cmd:${cmd}`, label: c.yellow(`   ○ ${cmd}`) });
+      });
+    }
+
+    if (skills.length > 0) {
+      options.push({ value: '__all_skills__', label: c.cyan('🧠 ALL Skills'), hint: c.dim(`全部 ${skills.length} 个`) });
+      skills.forEach((skill) => {
+        options.push({ value: `skill:${skill}`, label: c.green(`   ○ ${skill}`) });
+      });
+    }
+
+    // 循环选择
+    let selected = [];
     while (true) {
-      // 让用户多选文件
       const result = await multiselect({
-        message: '请选择要更新的文件（空格键选择，回车确认）',
-        options: fileOptions,
+        message: '请选择要更新的配置（空格选择，回车确认）:',
+        options,
         required: false,
       });
 
@@ -91,67 +110,97 @@ export async function handleUpdate() {
         process.exit(0);
       }
 
-      selectedFiles = result;
+      selected = result;
 
-      // 如果选择了文件，退出循环
-      if (selectedFiles.length > 0) {
-        break;
-      }
+      if (selected.length > 0) break;
 
-      // 未选择文件时，弹出操作提示
       const action = await select({
-        message: '未选择任何文件，请选择操作:',
+        message: '未选择任何项，请选择操作:',
         options: [
-          { value: 'retry', label: '🔄 重新选择文件' },
-          { value: 'cancel', label: '❌ 取消更新' },
+          { value: 'retry', label: '🔄 重新选择' },
+          { value: 'cancel', label: '❌ 取消' },
         ],
       });
 
       if (typeof action === 'symbol' || action === 'cancel') {
-        log.info('已取消更新');
+        log.info('已取消');
         process.exit(0);
       }
-      // 如果选择重新选择，继续循环
     }
 
-    const claudeDir = ensureClaudeDir();
-    const updateSpinner = ora('正在更新文件...').start();
+    const cwd = process.cwd();
+    const claudeDir = ensureClaudeDir(cwd);
+    const updateSpinner = ora('正在更新 .claude/...').start();
 
-    // 检查是否选择了 all
-    if (selectedFiles.includes('__all__')) {
-      // 清空 .claude 目录
+    // 解析选择结果
+    const updateAll = selected.includes('__all__');
+    const updateAllCommands = updateAll || selected.includes('__all_commands__');
+    const updateAllSkills = updateAll || selected.includes('__all_skills__');
+
+    const selectedCommands = updateAllCommands
+      ? commands
+      : selected.filter((s) => s.startsWith('cmd:')).map((s) => s.replace('cmd:', ''));
+
+    const selectedSkills = updateAllSkills
+      ? skills
+      : selected.filter((s) => s.startsWith('skill:')).map((s) => s.replace('skill:', ''));
+
+    // 如果更新全部，先清空对应目录
+    if (updateAll) {
       if (fs.existsSync(claudeDir)) {
         fs.rmSync(claudeDir, { recursive: true, force: true });
+        fs.mkdirSync(claudeDir, { recursive: true });
       }
-      // 复制整个模板
-      copyDirectory(templatePath, claudeDir);
-      updateSpinner.succeed('所有文件已更新');
     } else {
-      // 记录更新的文件列表
-      const updatedFiles = [];
-
-      // 只更新选中的文件
-      for (const file of selectedFiles) {
-        const srcPath = path.join(templatePath, file);
-        const destPath = path.join(claudeDir, file);
-        const isDir = fs.statSync(srcPath).isDirectory();
-        copyFileOrDir(srcPath, destPath);
-        updatedFiles.push(isDir ? `${file}/` : file);
+      if (updateAllCommands) {
+        const destCommandsDir = path.join(claudeDir, 'commands');
+        if (fs.existsSync(destCommandsDir)) {
+          fs.rmSync(destCommandsDir, { recursive: true, force: true });
+        }
       }
-
-      // 格式化文件列表显示
-      let successMessage = `已更新 ${selectedFiles.length} 个文件/文件夹:\n`;
-      if (updatedFiles.length <= 10) {
-        // 如果文件不多，全部显示
-        successMessage += updatedFiles.map(f => `  • ${f}`).join('\n');
-      } else {
-        // 如果文件太多，只显示前10个，其余用省略号
-        successMessage += updatedFiles.slice(0, 10).map(f => `  • ${f}`).join('\n');
-        successMessage += `\n  ... 还有 ${updatedFiles.length - 10} 个文件`;
+      if (updateAllSkills) {
+        const destSkillsDir = path.join(claudeDir, 'skills');
+        if (fs.existsSync(destSkillsDir)) {
+          fs.rmSync(destSkillsDir, { recursive: true, force: true });
+        }
       }
-
-      updateSpinner.succeed(successMessage);
     }
+
+    const updatedItems = [];
+
+    // 更新 commands
+    if (selectedCommands.length > 0) {
+      const destDir = path.join(claudeDir, 'commands');
+      fs.mkdirSync(destDir, { recursive: true });
+      for (const cmd of selectedCommands) {
+        const srcPath = path.join(commandsDir, `${cmd}.md`);
+        const destPath = path.join(destDir, `${cmd}.md`);
+        fs.copyFileSync(srcPath, destPath);
+        updatedItems.push(`commands/${cmd}.md`);
+      }
+    }
+
+    // 更新 skills
+    if (selectedSkills.length > 0) {
+      const destDir = path.join(claudeDir, 'skills');
+      fs.mkdirSync(destDir, { recursive: true });
+      for (const skill of selectedSkills) {
+        const srcPath = path.join(skillsDir, skill);
+        const destPath = path.join(destDir, skill);
+        copyFileOrDir(srcPath, destPath);
+        updatedItems.push(`skills/${skill}/`);
+      }
+    }
+
+    // 输出结果
+    let successMsg = `已更新 ${updatedItems.length} 个项目:\n`;
+    if (updatedItems.length <= 10) {
+      successMsg += updatedItems.map((f) => `  • ${f}`).join('\n');
+    } else {
+      successMsg += updatedItems.slice(0, 10).map((f) => `  • ${f}`).join('\n');
+      successMsg += `\n  ... 还有 ${updatedItems.length - 10} 个`;
+    }
+    updateSpinner.succeed(successMsg);
   } catch (error) {
     spinner.fail(`更新失败: ${error.message}`);
     process.exit(1);

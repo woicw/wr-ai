@@ -75,11 +75,15 @@ export async function listTemplates(url) {
   return items.filter((item) => item.isDirectory()).map((item) => item.name);
 }
 
-export function getTemplatesDir(url) {
+export function getRepoDir(url) {
   const repoPath = getRepoPath(url);
   if (!repoPath) {
     throw new Error("无效的 GitHub 地址");
   }
-  const repoDir = path.join(TEMPLATES_DIR, repoPath.replace(/\//g, "_"));
-  return path.join(repoDir, "templates");
+  return path.join(TEMPLATES_DIR, repoPath.replace(/\//g, "_"));
+}
+
+// 保留兼容性
+export function getTemplatesDir(url) {
+  return getRepoDir(url);
 }
