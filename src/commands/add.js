@@ -1,6 +1,6 @@
 import { getOrigin } from "../config.js";
 import { cloneOrUpdateRepo, getRepoDir } from "../github.js";
-import { copyFileOrDir, ensureClaudeDir } from "../fileOps.js";
+import { copyFileOrDir, ensureClaudeDir, updateGitignore } from "../fileOps.js";
 import { log } from "@clack/prompts";
 import ora from "ora";
 import fs from "fs";
@@ -53,6 +53,11 @@ export async function handleAdd(name) {
       const destPath = path.join(destDir, `${name}.md`);
       fs.copyFileSync(commandPath, destPath);
       spinner.succeed(`已添加 command: ${name} → .claude/commands/${name}.md`);
+      
+      // 更新 .gitignore
+      if (updateGitignore(cwd)) {
+        log.info('已添加 .claude 到 .gitignore');
+      }
       return;
     }
 
@@ -63,6 +68,11 @@ export async function handleAdd(name) {
       const destPath = path.join(claudeDir, "skills", name);
       copyFileOrDir(skillPath, destPath);
       spinner.succeed(`已添加 skill: ${name} → .claude/skills/${name}/`);
+      
+      // 更新 .gitignore
+      if (updateGitignore(cwd)) {
+        log.info('已添加 .claude 到 .gitignore');
+      }
       return;
     }
 

@@ -1,6 +1,6 @@
 import { getOrigin } from "../config.js";
 import { cloneOrUpdateRepo, getRepoDir } from "../github.js";
-import { copyFileOrDir, ensureClaudeDir } from "../fileOps.js";
+import { copyFileOrDir, ensureClaudeDir, updateGitignore } from "../fileOps.js";
 import { multiselect, select, log } from "@clack/prompts";
 import ora from "ora";
 import fs from "fs";
@@ -130,12 +130,50 @@ export async function handleInit() {
 
     const cwd = process.cwd();
     const claudeDir = ensureClaudeDir(cwd);
-    const copySpinner = ora("正在复制到 .claude/...").start();
 
     // 解析选择结果
     const copyAll = selected.includes('__all__');
     const copyAllCommands = copyAll || selected.includes('__all_commands__');
     const copyAllSkills = copyAll || selected.includes('__all_skills__');
+
+    // 二次确认：如果选择 all/all commands/all skills，且本地已有文件，提示合并操作
+    if (copyAll || copyAllCommands || copyAllSkills) {
+      const localCommandsDir = path.join(claudeDir, 'commands');
+      const localSkillsDir = path.join(claudeDir, 'skills');
+      const hasLocalCommands = fs.existsSync(localCommandsDir) && fs.readdirSync(localCommandsDir).length > 0;
+      const hasLocalSkills = fs.existsSync(localSkillsDir) && fs.readdirSync(localSkillsDir).length > 0;
+
+      let needConfirm = false;
+      let confirmMessage = '';
+
+      if (copyAll && (hasLocalCommands || hasLocalSkills)) {
+        needConfirm = true;
+        confirmMessage = '此操作将合并远程配置到本地（已存在的文件会被覆盖，本地独有的文件会保留），是否继续？';
+      } else if (copyAllCommands && hasLocalCommands) {
+        needConfirm = true;
+        confirmMessage = '此操作将合并远程 commands 到本地（已存在的文件会被覆盖，本地独有的文件会保留），是否继续？';
+      } else if (copyAllSkills && hasLocalSkills) {
+        needConfirm = true;
+        confirmMessage = '此操作将合并远程 skills 到本地（已存在的文件会被覆盖，本地独有的文件会保留），是否继续？';
+      }
+
+      if (needConfirm) {
+        const confirmResult = await select({
+          message: confirmMessage,
+          options: [
+            { value: 'yes', label: '✅ 确认继续' },
+            { value: 'no', label: '❌ 取消' },
+          ],
+        });
+
+        if (typeof confirmResult === 'symbol' || confirmResult === 'no') {
+          log.info('已取消');
+          process.exit(0);
+        }
+      }
+    }
+
+    const copySpinner = ora("正在合并到 .claude/...").start();
 
     const selectedCommands = copyAllCommands
       ? commands
@@ -146,33 +184,53 @@ export async function handleInit() {
       : selected.filter((s) => s.startsWith('skill:')).map((s) => s.replace('skill:', ''));
 
     const copiedItems = [];
+    const updatedItems = [];
+    const addedItems = [];
 
-    // 复制 commands
+    // 合并 commands
     if (selectedCommands.length > 0) {
       const destDir = path.join(claudeDir, "commands");
       fs.mkdirSync(destDir, { recursive: true });
       for (const cmd of selectedCommands) {
         const srcPath = path.join(commandsDir, `${cmd}.md`);
         const destPath = path.join(destDir, `${cmd}.md`);
+        const exists = fs.existsSync(destPath);
         fs.copyFileSync(srcPath, destPath);
+        if (exists) {
+          updatedItems.push(`commands/${cmd}.md`);
+        } else {
+          addedItems.push(`commands/${cmd}.md`);
+        }
         copiedItems.push(`commands/${cmd}.md`);
       }
     }
 
-    // 复制 skills
+    // 合并 skills
     if (selectedSkills.length > 0) {
       const destDir = path.join(claudeDir, "skills");
       fs.mkdirSync(destDir, { recursive: true });
       for (const skill of selectedSkills) {
         const srcPath = path.join(skillsDir, skill);
         const destPath = path.join(destDir, skill);
+        const exists = fs.existsSync(destPath);
         copyFileOrDir(srcPath, destPath);
+        if (exists) {
+          updatedItems.push(`skills/${skill}/`);
+        } else {
+          addedItems.push(`skills/${skill}/`);
+        }
         copiedItems.push(`skills/${skill}/`);
       }
     }
 
     // 输出结果
-    let successMsg = `已复制 ${copiedItems.length} 个项目到 .claude/:\n`;
+    let successMsg = `已合并 ${copiedItems.length} 个项目到 .claude/:\n`;
+    if (addedItems.length > 0) {
+      successMsg += c.green(`  新增: ${addedItems.length} 个\n`);
+    }
+    if (updatedItems.length > 0) {
+      successMsg += c.yellow(`  更新: ${updatedItems.length} 个\n`);
+    }
     if (copiedItems.length <= 10) {
       successMsg += copiedItems.map((f) => `  • ${f}`).join("\n");
     } else {
@@ -182,13 +240,8 @@ export async function handleInit() {
     copySpinner.succeed(successMsg);
 
     // 更新 .gitignore
-    const gitignorePath = path.join(cwd, '.gitignore');
-    if (fs.existsSync(gitignorePath)) {
-      const gitignoreContent = fs.readFileSync(gitignorePath, 'utf-8');
-      if (!gitignoreContent.includes('.claude')) {
-        fs.appendFileSync(gitignorePath, '\n.claude\n');
-        log.info('已添加 .claude 到 .gitignore');
-      }
+    if (updateGitignore(cwd)) {
+      log.info('已添加 .claude 到 .gitignore');
     }
   } catch (error) {
     spinner.fail(`初始化失败: ${error.message}`);

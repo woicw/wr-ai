@@ -1,6 +1,6 @@
 import { getOrigin } from '../config.js';
 import { cloneOrUpdateRepo, getRepoDir } from '../github.js';
-import { copyFileOrDir, ensureClaudeDir } from '../fileOps.js';
+import { copyFileOrDir, ensureClaudeDir, updateGitignore } from '../fileOps.js';
 import { select, multiselect, log } from '@clack/prompts';
 import ora from 'ora';
 import fs from 'fs';
@@ -130,12 +130,50 @@ export async function handleUpdate() {
 
     const cwd = process.cwd();
     const claudeDir = ensureClaudeDir(cwd);
-    const updateSpinner = ora('正在更新 .claude/...').start();
 
     // 解析选择结果
     const updateAll = selected.includes('__all__');
     const updateAllCommands = updateAll || selected.includes('__all_commands__');
     const updateAllSkills = updateAll || selected.includes('__all_skills__');
+
+    // 二次确认：如果选择 all/all commands/all skills，且本地已有文件，提示合并操作
+    if (updateAll || updateAllCommands || updateAllSkills) {
+      const localCommandsDir = path.join(claudeDir, 'commands');
+      const localSkillsDir = path.join(claudeDir, 'skills');
+      const hasLocalCommands = fs.existsSync(localCommandsDir) && fs.readdirSync(localCommandsDir).length > 0;
+      const hasLocalSkills = fs.existsSync(localSkillsDir) && fs.readdirSync(localSkillsDir).length > 0;
+
+      let needConfirm = false;
+      let confirmMessage = '';
+
+      if (updateAll && (hasLocalCommands || hasLocalSkills)) {
+        needConfirm = true;
+        confirmMessage = '此操作将合并远程配置到本地（已存在的文件会被覆盖，本地独有的文件会保留），是否继续？';
+      } else if (updateAllCommands && hasLocalCommands) {
+        needConfirm = true;
+        confirmMessage = '此操作将合并远程 commands 到本地（已存在的文件会被覆盖，本地独有的文件会保留），是否继续？';
+      } else if (updateAllSkills && hasLocalSkills) {
+        needConfirm = true;
+        confirmMessage = '此操作将合并远程 skills 到本地（已存在的文件会被覆盖，本地独有的文件会保留），是否继续？';
+      }
+
+      if (needConfirm) {
+        const confirmResult = await select({
+          message: confirmMessage,
+          options: [
+            { value: 'yes', label: '✅ 确认继续' },
+            { value: 'no', label: '❌ 取消' },
+          ],
+        });
+
+        if (typeof confirmResult === 'symbol' || confirmResult === 'no') {
+          log.info('已取消');
+          process.exit(0);
+        }
+      }
+    }
+
+    const updateSpinner = ora('正在合并到 .claude/...').start();
 
     const selectedCommands = updateAllCommands
       ? commands
@@ -145,62 +183,65 @@ export async function handleUpdate() {
       ? skills
       : selected.filter((s) => s.startsWith('skill:')).map((s) => s.replace('skill:', ''));
 
-    // 如果更新全部，先清空对应目录
-    if (updateAll) {
-      if (fs.existsSync(claudeDir)) {
-        fs.rmSync(claudeDir, { recursive: true, force: true });
-        fs.mkdirSync(claudeDir, { recursive: true });
-      }
-    } else {
-      if (updateAllCommands) {
-        const destCommandsDir = path.join(claudeDir, 'commands');
-        if (fs.existsSync(destCommandsDir)) {
-          fs.rmSync(destCommandsDir, { recursive: true, force: true });
-        }
-      }
-      if (updateAllSkills) {
-        const destSkillsDir = path.join(claudeDir, 'skills');
-        if (fs.existsSync(destSkillsDir)) {
-          fs.rmSync(destSkillsDir, { recursive: true, force: true });
-        }
-      }
-    }
-
     const updatedItems = [];
+    const addedItems = [];
 
-    // 更新 commands
+    // 合并 commands
     if (selectedCommands.length > 0) {
       const destDir = path.join(claudeDir, 'commands');
       fs.mkdirSync(destDir, { recursive: true });
       for (const cmd of selectedCommands) {
         const srcPath = path.join(commandsDir, `${cmd}.md`);
         const destPath = path.join(destDir, `${cmd}.md`);
+        const exists = fs.existsSync(destPath);
         fs.copyFileSync(srcPath, destPath);
-        updatedItems.push(`commands/${cmd}.md`);
+        if (exists) {
+          updatedItems.push(`commands/${cmd}.md`);
+        } else {
+          addedItems.push(`commands/${cmd}.md`);
+        }
       }
     }
 
-    // 更新 skills
+    // 合并 skills
     if (selectedSkills.length > 0) {
       const destDir = path.join(claudeDir, 'skills');
       fs.mkdirSync(destDir, { recursive: true });
       for (const skill of selectedSkills) {
         const srcPath = path.join(skillsDir, skill);
         const destPath = path.join(destDir, skill);
+        const exists = fs.existsSync(destPath);
         copyFileOrDir(srcPath, destPath);
-        updatedItems.push(`skills/${skill}/`);
+        if (exists) {
+          updatedItems.push(`skills/${skill}/`);
+        } else {
+          addedItems.push(`skills/${skill}/`);
+        }
       }
     }
 
     // 输出结果
-    let successMsg = `已更新 ${updatedItems.length} 个项目:\n`;
-    if (updatedItems.length <= 10) {
-      successMsg += updatedItems.map((f) => `  • ${f}`).join('\n');
+    const totalItems = updatedItems.length + addedItems.length;
+    let successMsg = `已合并 ${totalItems} 个项目:\n`;
+    if (addedItems.length > 0) {
+      successMsg += c.green(`  新增: ${addedItems.length} 个\n`);
+    }
+    if (updatedItems.length > 0) {
+      successMsg += c.yellow(`  更新: ${updatedItems.length} 个\n`);
+    }
+    const allItems = [...addedItems, ...updatedItems];
+    if (allItems.length <= 10) {
+      successMsg += allItems.map((f) => `  • ${f}`).join('\n');
     } else {
-      successMsg += updatedItems.slice(0, 10).map((f) => `  • ${f}`).join('\n');
-      successMsg += `\n  ... 还有 ${updatedItems.length - 10} 个`;
+      successMsg += allItems.slice(0, 10).map((f) => `  • ${f}`).join('\n');
+      successMsg += `\n  ... 还有 ${allItems.length - 10} 个`;
     }
     updateSpinner.succeed(successMsg);
+
+    // 更新 .gitignore
+    if (updateGitignore(cwd)) {
+      log.info('已添加 .claude 到 .gitignore');
+    }
   } catch (error) {
     spinner.fail(`更新失败: ${error.message}`);
     process.exit(1);

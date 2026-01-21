@@ -69,3 +69,16 @@ export function copyFileOrDir(src, dest) {
     fs.copyFileSync(src, dest);
   }
 }
+
+// 更新 .gitignore，确保包含 .claude
+export function updateGitignore(cwd = process.cwd()) {
+  const gitignorePath = path.join(cwd, '.gitignore');
+  if (fs.existsSync(gitignorePath)) {
+    const gitignoreContent = fs.readFileSync(gitignorePath, 'utf-8');
+    if (!gitignoreContent.includes('.claude')) {
+      fs.appendFileSync(gitignorePath, '\n.claude\n');
+      return true;
+    }
+  }
+  return false;
+}
