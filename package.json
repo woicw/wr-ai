@@ -1,6 +1,6 @@
 {
   "name": "wr-ai",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "一个用于管理 AI 模板的 CLI 工具",
   "type": "module",
   "main": "src/index.js",
