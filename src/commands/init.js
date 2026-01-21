@@ -76,9 +76,9 @@ export async function handleInit(templateName) {
     const gitignorePath = path.join(process.cwd(), '.gitignore');
     if (fs.existsSync(gitignorePath)) {
       const gitignoreContent = fs.readFileSync(gitignorePath, 'utf-8');
-      if (!gitignoreContent.includes('.wr-ai')) {
-        fs.appendFileSync(gitignorePath, '\n.wr-ai\n');
-        log.info('已添加 .wr-ai 到 .gitignore');
+      if (!gitignoreContent.includes('.claude')) {
+        fs.appendFileSync(gitignorePath, '\n.claude\n');
+        log.info('已添加 .claude 到 .gitignore');
       }
     }
   } catch (error) {
