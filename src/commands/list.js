@@ -214,6 +214,17 @@ export async function handleList() {
     console.log();
 
   } catch (error) {
+    // 检查是否是用户取消操作（Ctrl+C）
+    if (error.name === 'CancelError' ||
+        error.message?.includes('SIGINT') ||
+        error.message?.includes('cancel') ||
+        error.message?.includes('取消') ||
+        error.message?.includes('操作已取消')) {
+      spinner.stop();
+      log.info('操作已取消');
+      process.exit(0);
+    }
+
     spinner.fail(`获取配置列表失败: ${error.message}`);
     process.exit(1);
   }
