@@ -1,10 +1,18 @@
 import { getOrigin } from "../config.js";
 import { cloneOrUpdateRepo, getRepoDir } from "../github.js";
-import { select, log, note } from "@clack/prompts";
+import { select } from "@inquirer/prompts";
+import * as c from "yoctocolors";
+
+// 简单的 log 函数替代
+const log = {
+  info: (msg) => console.log(c.cyan('ℹ'), msg),
+  warn: (msg) => console.log(c.yellow('⚠'), msg),
+  error: (msg) => console.log(c.red('✖'), msg),
+  success: (msg) => console.log(c.green('✔'), msg),
+};
 import ora from "ora";
 import fs from "fs";
 import path from "path";
-import * as c from "yoctocolors";
 
 // 需要排除的文件/文件夹
 const EXCLUDE_LIST = ['.git', '.gitignore', 'package.json', 'package-lock.json', 'node_modules', 'README.md'];
@@ -17,6 +25,7 @@ export async function handleList() {
     log.error('请先使用 "wr-ai set github <url>" 设置 GitHub 地址');
     process.exit(1);
   }
+
 
   const spinner = ora("正在获取配置列表...").start();
 
@@ -41,21 +50,28 @@ export async function handleList() {
     if (items.includes(DEFAULT_SOURCE)) {
       sourceDir = DEFAULT_SOURCE;
     } else {
-      const result = await select({
-        message: "请选择配置来源:",
-        options: items.map((name) => ({ value: name, label: `📁 ${name}/` })),
-      });
-
-      if (typeof result === "symbol") {
+      try {
+        sourceDir = await select({
+          message: "请选择配置来源:",
+          choices: items.map((name) => ({
+            name: name,
+            value: name,
+            description: c.cyan(`📁 ${name}/`),
+          })),
+        });
+      } catch (error) {
         log.info("已取消");
         process.exit(0);
       }
-      sourceDir = result;
     }
 
     const sourcePath = path.join(repoDir, sourceDir);
     const commandsDir = path.join(sourcePath, "commands");
     const skillsDir = path.join(sourcePath, "skills");
+    const agentsDir = path.join(sourcePath, "agents");
+    const hooksDir = path.join(sourcePath, "hooks");
+    const mcpFile = path.join(sourcePath, ".mcp.json");
+    const lspFile = path.join(sourcePath, ".lsp.json");
 
     // 获取 commands 列表
     const commands = fs.existsSync(commandsDir)
@@ -71,42 +87,141 @@ export async function handleList() {
         .map((d) => d.name)
       : [];
 
-    if (commands.length === 0 && skills.length === 0) {
+    // 获取 agents 列表
+    const agents = fs.existsSync(agentsDir)
+      ? fs.readdirSync(agentsDir)
+        .filter((f) => f.endsWith(".md"))
+        .map((f) => f.replace(".md", ""))
+      : [];
+
+    // 获取 hooks 列表
+    const hooks = fs.existsSync(hooksDir)
+      ? fs.readdirSync(hooksDir)
+        .filter((f) => f.endsWith(".json"))
+        .map((f) => f.replace(".json", ""))
+      : [];
+
+    // 解析 mcp 和 lsp 文件
+    let mcpServers = [];
+    let lspServices = [];
+
+    if (fs.existsSync(mcpFile)) {
+      try {
+        const mcpContent = fs.readFileSync(mcpFile, 'utf-8');
+        const mcpConfig = JSON.parse(mcpContent);
+        if (mcpConfig.mcpServers && typeof mcpConfig.mcpServers === 'object') {
+          mcpServers = Object.keys(mcpConfig.mcpServers);
+        }
+      } catch (e) {
+        log.warn(`无法解析 MCP 配置: ${e.message}`);
+      }
+    }
+
+    if (fs.existsSync(lspFile)) {
+      try {
+        const lspContent = fs.readFileSync(lspFile, 'utf-8');
+        const lspConfig = JSON.parse(lspContent);
+        if (typeof lspConfig === 'object') {
+          lspServices = Object.keys(lspConfig);
+        }
+      } catch (e) {
+        log.warn(`无法解析 LSP 配置: ${e.message}`);
+      }
+    }
+
+    const hasMcp = mcpServers.length > 0;
+    const hasLsp = lspServices.length > 0;
+
+    if (commands.length === 0 && skills.length === 0 && agents.length === 0 && hooks.length === 0 && !hasMcp && !hasLsp) {
       log.info("配置目录为空");
       return;
     }
 
     // 构建展示内容
     const lines = [];
+    let hasPreviousSection = false;
 
     if (commands.length > 0) {
-      lines.push(c.bold(c.cyan('🔧 Commands')) + c.dim(` (${commands.length})`));
+      lines.push(c.bold(c.cyan('🔧 Commands')) + ' ' + `(${commands.length})`);
       lines.push('');
       commands.forEach((cmd, i) => {
         const isLast = i === commands.length - 1;
         const prefix = isLast ? '└─' : '├─';
-        lines.push(c.dim(prefix) + ' ' + c.yellow(cmd));
+        lines.push(prefix + ' ' + c.yellow(cmd));
       });
+      hasPreviousSection = true;
     }
 
     if (skills.length > 0) {
-      if (commands.length > 0) lines.push('');
-      lines.push(c.bold(c.cyan('🧠 Skills')) + c.dim(` (${skills.length})`));
+      if (hasPreviousSection) lines.push('');
+      lines.push(c.bold(c.cyan('🧠 Skills')) + ' ' + `(${skills.length})`);
       lines.push('');
       skills.forEach((skill, i) => {
         const isLast = i === skills.length - 1;
         const prefix = isLast ? '└─' : '├─';
-        lines.push(c.dim(prefix) + ' ' + c.green(skill));
+        lines.push(prefix + ' ' + c.green(skill));
       });
+      hasPreviousSection = true;
     }
 
-    note(lines.join('\n'), `📦 ${sourceDir}`);
+    if (agents.length > 0) {
+      if (hasPreviousSection) lines.push('');
+      lines.push(c.bold(c.blue('🤖 Agents')) + ' ' + `(${agents.length})`);
+      lines.push('');
+      agents.forEach((agent, i) => {
+        const isLast = i === agents.length - 1;
+        const prefix = isLast ? '└─' : '├─';
+        lines.push(prefix + ' ' + c.blue(agent));
+      });
+      hasPreviousSection = true;
+    }
+
+    if (hooks.length > 0) {
+      if (hasPreviousSection) lines.push('');
+      lines.push(c.bold(c.magenta('🪝 Hooks')) + ' ' + `(${hooks.length})`);
+      lines.push('');
+      hooks.forEach((hook, i) => {
+        const isLast = i === hooks.length - 1;
+        const prefix = isLast ? '└─' : '├─';
+        lines.push(prefix + ' ' + c.magenta(hook));
+      });
+      hasPreviousSection = true;
+    }
+
+    if (hasMcp) {
+      if (hasPreviousSection) lines.push('');
+      lines.push(c.bold(c.red('🔌 MCP Servers')) + ' ' + `(${mcpServers.length})`);
+      lines.push('');
+      mcpServers.forEach((server, i) => {
+        const isLast = i === mcpServers.length - 1 && !hasLsp;
+        const prefix = isLast ? '└─' : '├─';
+        lines.push(prefix + ' ' + c.red(server));
+      });
+      hasPreviousSection = true;
+    }
+
+    if (hasLsp) {
+      if (hasPreviousSection) lines.push('');
+      lines.push(c.bold(c.red('💻 LSP Services')) + ' ' + `(${lspServices.length})`);
+      lines.push('');
+      lspServices.forEach((service, i) => {
+        const isLast = i === lspServices.length - 1;
+        const prefix = isLast ? '└─' : '├─';
+        lines.push(prefix + ' ' + c.red(service));
+      });
+      hasPreviousSection = true;
+    }
+
+    console.log();
+    console.log(c.bold(`📦 ${sourceDir}`));
+    console.log();
+    console.log(lines.join('\n'));
 
     // 使用提示
     console.log();
-    console.log(c.dim('  使用方式:'));
-    console.log(c.dim('    wr-ai add <name>  ') + c.dim('添加指定 command 或 skill'));
-    console.log(c.dim('    wr-ai init        ') + c.dim('交互式选择添加'));
+    console.log('  使用方式:');
+    console.log('    wr-ai add <name>  ' + '添加指定配置（command/skill/agent/hook/mcp/lsp）');
+    console.log('    wr-ai init        ' + '交互式选择添加');
     console.log();
 
   } catch (error) {

@@ -1,16 +1,26 @@
 import { getOrigin } from '../config.js';
 import { cloneOrUpdateRepo, getRepoDir } from '../github.js';
-import { copyFileOrDir, ensureClaudeDir, updateGitignore } from '../fileOps.js';
-import { select, multiselect, log } from '@clack/prompts';
+import { ensureClaudeDir, updateGitignore } from '../fileOps.js';
+import { select } from '@inquirer/prompts';
+import * as c from 'yoctocolors';
 import ora from 'ora';
 import fs from 'fs';
 import path from 'path';
-import * as c from 'yoctocolors';
-
-// 需要排除的文件/文件夹
-const EXCLUDE_LIST = ['.git', '.gitignore', 'package.json', 'package-lock.json', 'node_modules', 'README.md'];
-// 默认配置来源
-const DEFAULT_SOURCE = 'awesome-claude';
+import {
+  EXCLUDE_LIST,
+  DEFAULT_SOURCE,
+  MAX_DISPLAY_ITEMS,
+  log,
+  readConfigLists,
+  buildOptions,
+  selectConfigs,
+  parseSelection,
+  mergeFileConfigs,
+  mergeMcpConfig,
+  mergeLspConfig,
+  checkNeedConfirm,
+  confirmAction,
+} from './shared.js';
 
 export async function handleUpdate() {
   const origin = getOrigin();
@@ -42,181 +52,98 @@ export async function handleUpdate() {
     if (items.includes(DEFAULT_SOURCE)) {
       sourceDir = DEFAULT_SOURCE;
     } else {
-      const result = await select({
-        message: '请选择配置来源:',
-        options: items.map((name) => ({ value: name, label: `📁 ${name}/` })),
-      });
-
-      if (typeof result === 'symbol') {
+      try {
+        sourceDir = await select({
+          message: c.bold('请选择配置来源:'),
+          choices: items.map((name) => ({
+            name: c.cyan(`📁 ${name}`),
+            value: name,
+            description: c.dim(`配置目录: ${name}/`),
+          })),
+        });
+      } catch (error) {
         log.info('已取消');
         process.exit(0);
       }
-      sourceDir = result;
     }
 
     const sourcePath = path.join(repoDir, sourceDir);
-    const commandsDir = path.join(sourcePath, 'commands');
-    const skillsDir = path.join(sourcePath, 'skills');
+    const srcBaseDir = path.resolve(sourcePath);
 
-    // 获取 commands 列表
-    const commands = fs.existsSync(commandsDir)
-      ? fs.readdirSync(commandsDir)
-        .filter((f) => f.endsWith('.md'))
-        .map((f) => f.replace('.md', ''))
-      : [];
+    // 读取配置列表
+    const configLists = readConfigLists(sourcePath);
+    const {
+      commands,
+      skills,
+      agents,
+      hooks,
+      mcpServers,
+      lspServices,
+      hasMcp,
+      hasLsp,
+      mcpFile,
+      lspFile,
+      commandsDir,
+      skillsDir,
+      agentsDir,
+      hooksDir,
+    } = configLists;
 
-    // 获取 skills 列表
-    const skills = fs.existsSync(skillsDir)
-      ? fs.readdirSync(skillsDir, { withFileTypes: true })
-        .filter((d) => d.isDirectory())
-        .map((d) => d.name)
-      : [];
-
-    if (commands.length === 0 && skills.length === 0) {
+    if (commands.length === 0 && skills.length === 0 && agents.length === 0 && hooks.length === 0 && !hasMcp && !hasLsp) {
       log.warn('配置目录为空');
       process.exit(0);
     }
 
-    // 构建选项：分组显示
-    const options = [
-      { value: '__all__', label: c.bold(c.magenta('⚡ ALL - 更新所有配置')), hint: c.dim('替换全部 commands 和 skills') },
-    ];
+    // 构建选项
+    const options = buildOptions(commands, skills, agents, hooks, mcpServers, lspServices, hasMcp, hasLsp, '更新');
 
-    if (commands.length > 0) {
-      options.push({ value: '__all_commands__', label: c.cyan('🔧 ALL Commands'), hint: c.dim(`全部 ${commands.length} 个`) });
-      commands.forEach((cmd) => {
-        options.push({ value: `cmd:${cmd}`, label: c.yellow(`   ○ ${cmd}`) });
-      });
-    }
-
-    if (skills.length > 0) {
-      options.push({ value: '__all_skills__', label: c.cyan('🧠 ALL Skills'), hint: c.dim(`全部 ${skills.length} 个`) });
-      skills.forEach((skill) => {
-        options.push({ value: `skill:${skill}`, label: c.green(`   ○ ${skill}`) });
-      });
-    }
-
-    // 循环选择
-    let selected = [];
-    while (true) {
-      const result = await multiselect({
-        message: '请选择要更新的配置（空格选择，回车确认）:',
-        options,
-        required: false,
-      });
-
-      if (typeof result === 'symbol') {
-        log.info('已取消');
-        process.exit(0);
-      }
-
-      selected = result;
-
-      if (selected.length > 0) break;
-
-      const action = await select({
-        message: '未选择任何项，请选择操作:',
-        options: [
-          { value: 'retry', label: '🔄 重新选择' },
-          { value: 'cancel', label: '❌ 取消' },
-        ],
-      });
-
-      if (typeof action === 'symbol' || action === 'cancel') {
-        log.info('已取消');
-        process.exit(0);
-      }
-    }
+    // 选择配置
+    const selected = await selectConfigs(options, '请选择要更新的配置（空格选择，回车确认）:');
 
     const cwd = process.cwd();
     const claudeDir = ensureClaudeDir(cwd);
 
     // 解析选择结果
-    const updateAll = selected.includes('__all__');
-    const updateAllCommands = updateAll || selected.includes('__all_commands__');
-    const updateAllSkills = updateAll || selected.includes('__all_skills__');
+    const selection = parseSelection(selected, commands, skills, agents, hooks, mcpServers, lspServices);
 
-    // 二次确认：如果选择 all/all commands/all skills，且本地已有文件，提示合并操作
-    if (updateAll || updateAllCommands || updateAllSkills) {
-      const localCommandsDir = path.join(claudeDir, 'commands');
-      const localSkillsDir = path.join(claudeDir, 'skills');
-      const hasLocalCommands = fs.existsSync(localCommandsDir) && fs.readdirSync(localCommandsDir).length > 0;
-      const hasLocalSkills = fs.existsSync(localSkillsDir) && fs.readdirSync(localSkillsDir).length > 0;
-
-      let needConfirm = false;
-      let confirmMessage = '';
-
-      if (updateAll && (hasLocalCommands || hasLocalSkills)) {
-        needConfirm = true;
-        confirmMessage = '此操作将合并远程配置到本地（已存在的文件会被覆盖，本地独有的文件会保留），是否继续？';
-      } else if (updateAllCommands && hasLocalCommands) {
-        needConfirm = true;
-        confirmMessage = '此操作将合并远程 commands 到本地（已存在的文件会被覆盖，本地独有的文件会保留），是否继续？';
-      } else if (updateAllSkills && hasLocalSkills) {
-        needConfirm = true;
-        confirmMessage = '此操作将合并远程 skills 到本地（已存在的文件会被覆盖，本地独有的文件会保留），是否继续？';
-      }
-
-      if (needConfirm) {
-        const confirmResult = await select({
-          message: confirmMessage,
-          options: [
-            { value: 'yes', label: '✅ 确认继续' },
-            { value: 'no', label: '❌ 取消' },
-          ],
-        });
-
-        if (typeof confirmResult === 'symbol' || confirmResult === 'no') {
-          log.info('已取消');
-          process.exit(0);
-        }
-      }
+    // 检查是否需要确认
+    const confirmMessage = checkNeedConfirm(selection, claudeDir);
+    if (confirmMessage) {
+      await confirmAction(confirmMessage);
     }
 
     const updateSpinner = ora('正在合并到 .claude/...').start();
 
-    const selectedCommands = updateAllCommands
-      ? commands
-      : selected.filter((s) => s.startsWith('cmd:')).map((s) => s.replace('cmd:', ''));
+    // 合并文件配置
+    const fileResults = mergeFileConfigs(
+      selection.selectedCommands,
+      selection.selectedSkills,
+      selection.selectedAgents,
+      selection.selectedHooks,
+      { commandsDir, skillsDir, agentsDir, hooksDir },
+      claudeDir,
+      srcBaseDir
+    );
 
-    const selectedSkills = updateAllSkills
-      ? skills
-      : selected.filter((s) => s.startsWith('skill:')).map((s) => s.replace('skill:', ''));
+    const { addedItems, updatedItems } = fileResults;
 
-    const updatedItems = [];
-    const addedItems = [];
-
-    // 合并 commands
-    if (selectedCommands.length > 0) {
-      const destDir = path.join(claudeDir, 'commands');
-      fs.mkdirSync(destDir, { recursive: true });
-      for (const cmd of selectedCommands) {
-        const srcPath = path.join(commandsDir, `${cmd}.md`);
-        const destPath = path.join(destDir, `${cmd}.md`);
-        const exists = fs.existsSync(destPath);
-        fs.copyFileSync(srcPath, destPath);
-        if (exists) {
-          updatedItems.push(`commands/${cmd}.md`);
-        } else {
-          addedItems.push(`commands/${cmd}.md`);
-        }
+    // 合并 MCP 配置
+    if (selection.selectMcp && hasMcp) {
+      const status = mergeMcpConfig(mcpFile, claudeDir, selection.selectedMcpServers, selection.selectAllMcp, srcBaseDir);
+      if (status === 'updated') {
+        updatedItems.push('.mcp.json');
+      } else {
+        addedItems.push('.mcp.json');
       }
     }
 
-    // 合并 skills
-    if (selectedSkills.length > 0) {
-      const destDir = path.join(claudeDir, 'skills');
-      fs.mkdirSync(destDir, { recursive: true });
-      for (const skill of selectedSkills) {
-        const srcPath = path.join(skillsDir, skill);
-        const destPath = path.join(destDir, skill);
-        const exists = fs.existsSync(destPath);
-        copyFileOrDir(srcPath, destPath);
-        if (exists) {
-          updatedItems.push(`skills/${skill}/`);
-        } else {
-          addedItems.push(`skills/${skill}/`);
-        }
+    // 合并 LSP 配置
+    if (selection.selectLsp && hasLsp) {
+      const status = mergeLspConfig(lspFile, claudeDir, selection.selectedLspServices, selection.selectAllLsp, srcBaseDir);
+      if (status === 'updated') {
+        updatedItems.push('.lsp.json');
+      } else {
+        addedItems.push('.lsp.json');
       }
     }
 
@@ -230,11 +157,11 @@ export async function handleUpdate() {
       successMsg += c.yellow(`  更新: ${updatedItems.length} 个\n`);
     }
     const allItems = [...addedItems, ...updatedItems];
-    if (allItems.length <= 10) {
+    if (allItems.length <= MAX_DISPLAY_ITEMS) {
       successMsg += allItems.map((f) => `  • ${f}`).join('\n');
     } else {
-      successMsg += allItems.slice(0, 10).map((f) => `  • ${f}`).join('\n');
-      successMsg += `\n  ... 还有 ${allItems.length - 10} 个`;
+      successMsg += allItems.slice(0, MAX_DISPLAY_ITEMS).map((f) => `  • ${f}`).join('\n');
+      successMsg += `\n  ... 还有 ${allItems.length - MAX_DISPLAY_ITEMS} 个`;
     }
     updateSpinner.succeed(successMsg);
 
@@ -244,6 +171,10 @@ export async function handleUpdate() {
     }
   } catch (error) {
     spinner.fail(`更新失败: ${error.message}`);
+    if (error.stack) {
+      log.error(`错误堆栈: ${error.stack}`);
+    }
+    log.error(`操作: 更新配置`);
     process.exit(1);
   }
 }

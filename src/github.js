@@ -35,7 +35,11 @@ export async function cloneOrUpdateRepo(url) {
   if (fs.existsSync(repoDir)) {
     // 如果已存在，执行 git pull
     try {
-      execSync("git pull", { cwd: repoDir, stdio: "inherit" });
+      execSync("git pull", { 
+        cwd: repoDir, 
+        stdio: "pipe",
+        encoding: "utf-8"
+      });
     } catch (error) {
       throw new Error(`更新仓库失败: ${error.message}`);
     }
@@ -46,14 +50,20 @@ export async function cloneOrUpdateRepo(url) {
       const cloneUrl = `${normalizedUrl}.git`;
       try {
         fs.mkdirSync(path.dirname(repoDir), { recursive: true });
-        execSync(`git clone ${cloneUrl} ${repoDir}`, { stdio: "inherit" });
+        execSync(`git clone ${cloneUrl} ${repoDir}`, { 
+          stdio: "pipe",
+          encoding: "utf-8"
+        });
       } catch (error) {
         throw new Error(`克隆仓库失败: ${error.message}`);
       }
     } else {
       try {
         fs.mkdirSync(path.dirname(repoDir), { recursive: true });
-        execSync(`git clone ${normalizedUrl} ${repoDir}`, { stdio: "inherit" });
+        execSync(`git clone ${normalizedUrl} ${repoDir}`, { 
+          stdio: "pipe",
+          encoding: "utf-8"
+        });
       } catch (error) {
         throw new Error(`克隆仓库失败: ${error.message}`);
       }

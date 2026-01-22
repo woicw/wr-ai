@@ -1,7 +1,7 @@
 {
   "name": "wr-ai",
-  "version": "1.0.2",
-  "description": "一个用于管理 AI 模板的 CLI 工具",
+  "version": "2.0.0",
+  "description": "一个用于管理 AI 配置的 CLI 工具",
   "type": "module",
   "main": "src/index.js",
   "bin": {
@@ -11,7 +11,7 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
-    "@clack/prompts": "^0.11.0",
+    "@inquirer/prompts": "^7.0.0",
     "commander": "^14.0.2",
     "ora": "^9.0.0",
     "yoctocolors": "^2.1.2"
