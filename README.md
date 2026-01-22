@@ -7,10 +7,11 @@
 - 🚀 **快速配置**: 从 GitHub 仓库快速获取和安装 Claude 配置
 - 📦 **完整支持**: 支持 Commands、Skills、Agents、Hooks、MCP 和 LSP 配置
 - 🔄 **智能合并**: 合并模式保留本地独有文件，避免数据丢失
-- 🎨 **美观界面**: 彩色交互式命令行界面
+- 🎨 **美观界面**: 彩色交互式命令行界面，树状结构显示，禁用循环滚动
 - ⚡ **批量操作**: 支持批量添加、更新配置
 - 🔌 **细粒度控制**: 支持选择单个 MCP 服务器和 LSP 服务
 - 🔒 **自动保护**: 自动更新 `.gitignore`，保护配置隐私
+- 🛡️ **安全可靠**: 路径验证防止路径遍历攻击，原子性写入保证配置完整性
 
 ## 📦 安装
 
@@ -117,25 +118,32 @@ wr-ai set github https://github.com/user/repo.git
 ```
 ? 请选择要添加的配置（空格选择，回车确认）:
   ◻ ⚡ ALL - 复制所有配置
-  ◻ 🔧 ALL Commands          (全部 2 个)
-     ◻ ○ commit
-     ◻ ○ review
-  ◻ 🧠 ALL Skills            (全部 4 个)
-     ◻ ○ code-review
-     ◻ ○ mcp-builder
-  ◻ 🤖 ALL Agents            (全部 3 个)
-     ◻ ○ security-reviewer
-     ◻ ○ performance-tester
-  ◻ 🪝 ALL Hooks             (全部 2 个)
-     ◻ ○ hooks
-     ◻ ○ security-hooks
-  ◻ 🔌 ALL MCP Servers       (全部 2 个)
-     ◻ ○ plugin-database
-     ◻ ○ plugin-api-client
-  ◻ 💻 ALL LSP Services      (全部 2 个)
-     ◻ ○ go
-     ◻ ○ python
+  ◻ 🔧 ALL Commands          (2 个命令)
+     └─ commit
+     └─ review
+  ◻ 🧠 ALL Skills            (4 个技能)
+     └─ code-review
+     └─ mcp-builder
+  ◻ 🤖 ALL Agents            (3 个代理)
+     └─ security-reviewer
+     └─ performance-tester
+  ◻ 🪝 ALL Hooks             (2 个钩子)
+     └─ hooks
+     └─ security-hooks
+  ◻ 🔌 ALL MCP Servers       (2 个服务器)
+     └─ plugin-database
+     └─ plugin-api-client
+  ◻ 💻 ALL LSP Services      (2 个服务)
+     └─ go
+     └─ python
 ```
+
+**界面特性**:
+
+- 树状结构显示，层次清晰
+- 禁用循环滚动，到达列表末尾时停止
+- 彩色分组标识，易于识别
+- 显示每个分组的数量统计
 
 **合并行为**:
 
@@ -357,6 +365,13 @@ ai-config/
 4. **查看可用配置**: 使用 `wr-ai list` 浏览所有可用选项
 5. **选择性添加 MCP/LSP**: 在 `init` 或 `update` 中选择单个服务器/服务，而不是全部
 
+## 🔐 安全性
+
+- **路径验证**: 所有文件操作都经过路径验证，防止路径遍历攻击
+- **原子性写入**: 配置文件使用临时文件+原子重命名，确保写入完整性
+- **错误处理**: 完善的错误处理和日志记录，便于问题排查
+- **输入验证**: 所有用户输入都经过验证，防止运行时错误
+
 ## 🔌 MCP 和 LSP 配置说明
 
 ### MCP 配置
@@ -373,9 +388,9 @@ ai-config/
 
 ## 🛠️ 技术栈
 
-- **Node.js**: ES Modules
+- **Node.js**: ES Modules (>=18)
 - **Commander**: 命令行参数解析
-- **@clack/prompts**: 交互式命令行界面
+- **@inquirer/prompts**: 交互式命令行界面（支持循环滚动控制）
 - **ora**: 加载动画
 - **yoctocolors**: 终端颜色输出
 
@@ -392,6 +407,31 @@ pnpm install
 # 本地开发（需要全局链接）
 pnpm link --global
 ```
+
+### 代码结构
+
+```
+src/
+├── commands/
+│   ├── shared.js      # 共享模块（路径验证、配置合并等）
+│   ├── init.js        # 初始化命令
+│   ├── update.js      # 更新命令
+│   ├── add.js         # 添加命令
+│   ├── list.js        # 列表命令
+│   ├── set.js         # 设置命令
+│   └── clear.js       # 清除命令
+├── config.js          # 配置管理
+├── fileOps.js         # 文件操作
+├── github.js          # GitHub 操作
+└── index.js           # 入口文件
+```
+
+### 架构特点
+
+- **模块化设计**: 公共代码提取到 `shared.js`，减少代码重复
+- **安全性优先**: 所有文件操作都经过路径验证
+- **错误处理**: 完善的错误处理和用户友好的错误信息
+- **跨平台兼容**: 使用 `path.join` 和 `path.sep` 确保跨平台兼容
 
 ## 🤝 贡献
 
