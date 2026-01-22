@@ -412,26 +412,38 @@ pnpm link --global
 
 ```
 src/
-├── commands/
-│   ├── shared.js      # 共享模块（路径验证、配置合并等）
-│   ├── init.js        # 初始化命令
-│   ├── update.js      # 更新命令
-│   ├── add.js         # 添加命令
-│   ├── list.js        # 列表命令
-│   ├── set.js         # 设置命令
-│   └── clear.js       # 清除命令
-├── config.js          # 配置管理
-├── fileOps.js         # 文件操作
-├── github.js          # GitHub 操作
-└── index.js           # 入口文件
+├── index.js                    # CLI 入口
+├── commands/                   # 命令处理器
+│   ├── add.js                 # 添加命令
+│   ├── clear.js               # 清除命令
+│   ├── init.js                # 初始化命令
+│   ├── list.js                # 列表命令
+│   ├── set.js                 # 设置命令
+│   └── update.js              # 更新命令
+├── lib/                        # 核心库代码
+│   ├── config.js              # 配置管理
+│   ├── filesystem.js          # 文件系统操作
+│   └── repository.js          # 仓库操作（GitHub）
+└── utils/                      # 工具函数
+    ├── constants.js           # 常量定义
+    ├── logger.js              # 日志工具
+    ├── parser.js              # 解析工具
+    ├── prompts.js             # 交互提示工具
+    ├── merger.js             # 合并配置工具
+    └── validator.js          # 验证工具
 ```
 
 ### 架构特点
 
-- **模块化设计**: 公共代码提取到 `shared.js`，减少代码重复
-- **安全性优先**: 所有文件操作都经过路径验证
+- **清晰分层**: 
+  - `lib/` - 核心库代码（配置、文件系统、仓库操作）
+  - `utils/` - 工具函数（按职责拆分）
+  - `commands/` - 命令处理器（业务逻辑）
+- **模块化设计**: 将大型共享模块拆分为多个职责单一的工具模块，提高可维护性
+- **安全性优先**: 所有文件操作都经过路径验证，防止路径遍历攻击
 - **错误处理**: 完善的错误处理和用户友好的错误信息
 - **跨平台兼容**: 使用 `path.join` 和 `path.sep` 确保跨平台兼容
+- **原子性操作**: 配置文件使用临时文件+原子重命名，确保写入完整性
 
 ## 🤝 贡献
 

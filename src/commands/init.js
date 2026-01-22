@@ -1,26 +1,16 @@
-import { getOrigin } from '../config.js';
-import { cloneOrUpdateRepo, getRepoDir } from '../github.js';
-import { ensureClaudeDir, updateGitignore } from '../fileOps.js';
+import { getOrigin } from '../lib/config.js';
+import { cloneOrUpdateRepo, getRepoDir } from '../lib/repository.js';
+import { ensureClaudeDir, updateGitignore } from '../lib/filesystem.js';
 import { select } from '@inquirer/prompts';
 import * as c from 'yoctocolors';
 import ora from 'ora';
 import fs from 'fs';
 import path from 'path';
-import {
-  EXCLUDE_LIST,
-  DEFAULT_SOURCE,
-  MAX_DISPLAY_ITEMS,
-  log,
-  readConfigLists,
-  buildOptions,
-  selectConfigs,
-  parseSelection,
-  mergeFileConfigs,
-  mergeMcpConfig,
-  mergeLspConfig,
-  checkNeedConfirm,
-  confirmAction,
-} from './shared.js';
+import { EXCLUDE_LIST, DEFAULT_SOURCE, MAX_DISPLAY_ITEMS } from '../utils/constants.js';
+import { log } from '../utils/logger.js';
+import { readConfigLists, parseSelection } from '../utils/parser.js';
+import { buildOptions, selectConfigs, confirmAction } from '../utils/prompts.js';
+import { mergeFileConfigs, mergeMcpConfig, mergeLspConfig, checkNeedConfirm } from '../utils/merger.js';
 
 export async function handleInit() {
   const origin = getOrigin();
@@ -170,6 +160,17 @@ export async function handleInit() {
       log.info('已添加 .claude 到 .gitignore');
     }
   } catch (error) {
+    // 检查是否是用户取消操作（Ctrl+C）
+    if (error.name === 'ExitPromptError' ||
+      error.name === 'CancelError' ||
+      error.message?.includes('SIGINT') ||
+      error.message?.includes('cancel') ||
+      error.message?.includes('取消')) {
+      spinner.stop();
+      log.info('操作:初始化配置已取消，退出程序');
+      process.exit(0);
+    }
+
     spinner.fail(`初始化失败: ${error.message}`);
     if (error.stack) {
       log.error(`错误堆栈: ${error.stack}`);

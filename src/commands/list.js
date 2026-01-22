@@ -1,23 +1,12 @@
-import { getOrigin } from "../config.js";
-import { cloneOrUpdateRepo, getRepoDir } from "../github.js";
+import { getOrigin } from "../lib/config.js";
+import { cloneOrUpdateRepo, getRepoDir } from "../lib/repository.js";
 import { select } from "@inquirer/prompts";
 import * as c from "yoctocolors";
-
-// 简单的 log 函数替代
-const log = {
-  info: (msg) => console.log(c.cyan('ℹ'), msg),
-  warn: (msg) => console.log(c.yellow('⚠'), msg),
-  error: (msg) => console.log(c.red('✖'), msg),
-  success: (msg) => console.log(c.green('✔'), msg),
-};
 import ora from "ora";
 import fs from "fs";
 import path from "path";
-
-// 需要排除的文件/文件夹
-const EXCLUDE_LIST = ['.git', '.gitignore', 'package.json', 'package-lock.json', 'node_modules', 'README.md'];
-// 默认配置来源
-const DEFAULT_SOURCE = 'awesome-claude';
+import { EXCLUDE_LIST, DEFAULT_SOURCE } from "../utils/constants.js";
+import { log } from "../utils/logger.js";
 
 export async function handleList() {
   const origin = getOrigin();
