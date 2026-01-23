@@ -23,5 +23,9 @@
   ],
   "author": "woic",
   "license": "MIT",
-  "packageManager": "pnpm@10.17.0"
+  "packageManager": "pnpm@10.17.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/woicw/wr-ai.git"
+  }
 }
