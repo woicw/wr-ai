@@ -1,4 +1,4 @@
-import { getOrigin } from "../lib/config.js";
+import { getOrigin, getPlatform } from "../lib/config.js";
 import { cloneOrUpdateRepo, getRepoDir } from "../lib/repository.js";
 import { copyFileOrDir, ensureClaudeDir, updateGitignore } from "../lib/filesystem.js";
 import * as c from "yoctocolors";
@@ -7,6 +7,7 @@ import fs from "fs";
 import path from "path";
 import { EXCLUDE_LIST, DEFAULT_SOURCE } from "../utils/constants.js";
 import { log } from "../utils/logger.js";
+import { checkMcpConfigNeedsSetup, showMcpConfigHint } from "../utils/merger.js";
 
 // 列出可用的配置项
 async function listAvailableItems(sourcePath, filterType, mcpServers, lspServices) {
@@ -94,7 +95,7 @@ async function listAvailableItems(sourcePath, filterType, mcpServers, lspService
   }
 }
 
-export async function handleAdd(name) {
+export async function handleAdd(name, options = {}) {
   if (!name) {
     log.error("请指定要添加的配置名称，格式: <name> 或 <type>:<name>");
     log.info("支持的 type: command, skill, agent, hook, mcp, lsp");
@@ -137,8 +138,11 @@ export async function handleAdd(name) {
     }
 
     const sourcePath = path.join(repoDir, sourceDir);
-    const cwd = process.cwd();
-    const claudeDir = ensureClaudeDir(cwd);
+    const isGlobal = options.global || false;
+    const platform = getPlatform();
+    const claudeDir = ensureClaudeDir(isGlobal, platform);
+    const dirName = `.${platform}`;
+    const targetPathPrefix = isGlobal ? `~/${dirName}` : dirName;
 
     // 解析 MCP 和 LSP 配置（用于后续使用）
     const mcpFile = path.join(sourcePath, ".mcp.json");
@@ -182,9 +186,9 @@ export async function handleAdd(name) {
             fs.mkdirSync(destDir, { recursive: true });
             const destPath = path.join(destDir, `${actualName}.md`);
             fs.copyFileSync(commandPath, destPath);
-            spinner.succeed(`已添加 command: ${actualName} → .claude/commands/${actualName}.md`);
+            spinner.succeed(`已添加 command: ${actualName} → ${targetPathPrefix}/commands/${actualName}.md`);
 
-            if (updateGitignore(cwd)) {
+            if (updateGitignore(process.cwd(), isGlobal)) {
               log.info('已添加 .claude 到 .gitignore');
             }
             return;
@@ -199,9 +203,9 @@ export async function handleAdd(name) {
             spinner.text = `正在添加 skill: ${actualName}...`;
             const destPath = path.join(claudeDir, "skills", actualName);
             copyFileOrDir(skillPath, destPath);
-            spinner.succeed(`已添加 skill: ${actualName} → .claude/skills/${actualName}/`);
+            spinner.succeed(`已添加 skill: ${actualName} → ${targetPathPrefix}/skills/${actualName}/`);
 
-            if (updateGitignore(cwd)) {
+            if (updateGitignore(process.cwd(), isGlobal)) {
               log.info('已添加 .claude 到 .gitignore');
             }
             return;
@@ -218,9 +222,9 @@ export async function handleAdd(name) {
             fs.mkdirSync(destDir, { recursive: true });
             const destPath = path.join(destDir, `${actualName}.md`);
             fs.copyFileSync(agentPath, destPath);
-            spinner.succeed(`已添加 agent: ${actualName} → .claude/agents/${actualName}.md`);
+            spinner.succeed(`已添加 agent: ${actualName} → ${targetPathPrefix}/agents/${actualName}.md`);
 
-            if (updateGitignore(cwd)) {
+            if (updateGitignore(process.cwd(), isGlobal)) {
               log.info('已添加 .claude 到 .gitignore');
             }
             return;
@@ -237,9 +241,9 @@ export async function handleAdd(name) {
             fs.mkdirSync(destDir, { recursive: true });
             const destPath = path.join(destDir, `${actualName}.json`);
             fs.copyFileSync(hookPath, destPath);
-            spinner.succeed(`已添加 hook: ${actualName} → .claude/hooks/${actualName}.json`);
+            spinner.succeed(`已添加 hook: ${actualName} → ${targetPathPrefix}/hooks/${actualName}.json`);
 
-            if (updateGitignore(cwd)) {
+            if (updateGitignore(process.cwd(), isGlobal)) {
               log.info('已添加 .claude 到 .gitignore');
             }
             return;
@@ -288,9 +292,15 @@ export async function handleAdd(name) {
             };
 
             fs.writeFileSync(destPath, JSON.stringify(mergedConfig, null, 2) + '\n');
-            spinner.succeed(`已添加 MCP 配置 → .claude/.mcp.json`);
+            spinner.succeed(`已添加 MCP 配置 → ${targetPathPrefix}/.mcp.json`);
 
-            if (updateGitignore(cwd)) {
+            // 检查是否需要手动配置 key/token
+            const serversNeedingSetup = checkMcpConfigNeedsSetup(mergedConfig);
+            if (serversNeedingSetup.length > 0) {
+              showMcpConfigHint(serversNeedingSetup, destPath);
+            }
+
+            if (updateGitignore(process.cwd(), isGlobal)) {
               log.info('已添加 .claude 到 .gitignore');
             }
             return;
@@ -341,9 +351,15 @@ export async function handleAdd(name) {
             };
 
             fs.writeFileSync(destPath, JSON.stringify(mergedConfig, null, 2) + '\n');
-            spinner.succeed(`已添加 MCP 服务器: ${actualName} → .claude/.mcp.json`);
+            spinner.succeed(`已添加 MCP 服务器: ${actualName} → ${targetPathPrefix}/.mcp.json`);
 
-            if (updateGitignore(cwd)) {
+            // 检查是否需要手动配置 key/token
+            const serversNeedingSetup = checkMcpConfigNeedsSetup(mergedConfig);
+            if (serversNeedingSetup.length > 0) {
+              showMcpConfigHint(serversNeedingSetup, destPath);
+            }
+
+            if (updateGitignore(process.cwd(), isGlobal)) {
               log.info('已添加 .claude 到 .gitignore');
             }
             return;
@@ -388,9 +404,9 @@ export async function handleAdd(name) {
             };
 
             fs.writeFileSync(destPath, JSON.stringify(mergedConfig, null, 2) + '\n');
-            spinner.succeed(`已添加 LSP 配置 → .claude/.lsp.json`);
+            spinner.succeed(`已添加 LSP 配置 → ${targetPathPrefix}/.lsp.json`);
 
-            if (updateGitignore(cwd)) {
+            if (updateGitignore(process.cwd(), isGlobal)) {
               log.info('已添加 .claude 到 .gitignore');
             }
             return;
@@ -439,9 +455,9 @@ export async function handleAdd(name) {
             };
 
             fs.writeFileSync(destPath, JSON.stringify(mergedConfig, null, 2) + '\n');
-            spinner.succeed(`已添加 LSP 服务: ${actualName} → .claude/.lsp.json`);
+            spinner.succeed(`已添加 LSP 服务: ${actualName} → ${targetPathPrefix}/.lsp.json`);
 
-            if (updateGitignore(cwd)) {
+            if (updateGitignore(process.cwd(), isGlobal)) {
               log.info('已添加 .claude 到 .gitignore');
             }
             return;
@@ -468,9 +484,9 @@ export async function handleAdd(name) {
       fs.mkdirSync(destDir, { recursive: true });
       const destPath = path.join(destDir, `${actualName}.md`);
       fs.copyFileSync(commandPath, destPath);
-      spinner.succeed(`已添加 command: ${actualName} → .claude/commands/${actualName}.md`);
+      spinner.succeed(`已添加 command: ${actualName} → ${targetPathPrefix}/commands/${actualName}.md`);
 
-      if (updateGitignore(cwd)) {
+      if (updateGitignore(process.cwd(), isGlobal)) {
         log.info('已添加 .claude 到 .gitignore');
       }
       return;
@@ -482,9 +498,9 @@ export async function handleAdd(name) {
       spinner.text = `正在添加 skill: ${actualName}...`;
       const destPath = path.join(claudeDir, "skills", actualName);
       copyFileOrDir(skillPath, destPath);
-      spinner.succeed(`已添加 skill: ${actualName} → .claude/skills/${actualName}/`);
+      spinner.succeed(`已添加 skill: ${actualName} → ${targetPathPrefix}/skills/${actualName}/`);
 
-      if (updateGitignore(cwd)) {
+      if (updateGitignore(process.cwd(), isGlobal)) {
         log.info('已添加 .claude 到 .gitignore');
       }
       return;
@@ -498,9 +514,9 @@ export async function handleAdd(name) {
       fs.mkdirSync(destDir, { recursive: true });
       const destPath = path.join(destDir, `${actualName}.md`);
       fs.copyFileSync(agentPath, destPath);
-      spinner.succeed(`已添加 agent: ${actualName} → .claude/agents/${actualName}.md`);
+      spinner.succeed(`已添加 agent: ${actualName} → ${targetPathPrefix}/agents/${actualName}.md`);
 
-      if (updateGitignore(cwd)) {
+      if (updateGitignore(process.cwd(), isGlobal)) {
         log.info('已添加 .claude 到 .gitignore');
       }
       return;
@@ -514,9 +530,9 @@ export async function handleAdd(name) {
       fs.mkdirSync(destDir, { recursive: true });
       const destPath = path.join(destDir, `${actualName}.json`);
       fs.copyFileSync(hookPath, destPath);
-      spinner.succeed(`已添加 hook: ${actualName} → .claude/hooks/${actualName}.json`);
+      spinner.succeed(`已添加 hook: ${actualName} → ${targetPathPrefix}/hooks/${actualName}.json`);
 
-      if (updateGitignore(cwd)) {
+      if (updateGitignore(process.cwd(), isGlobal)) {
         log.info('已添加 .claude 到 .gitignore');
       }
       return;
@@ -556,9 +572,15 @@ export async function handleAdd(name) {
         };
 
         fs.writeFileSync(destPath, JSON.stringify(mergedConfig, null, 2) + '\n');
-        spinner.succeed(`已添加 MCP 服务器: ${actualName} → .claude/.mcp.json`);
+        spinner.succeed(`已添加 MCP 服务器: ${actualName} → ${targetPathPrefix}/.mcp.json`);
 
-        if (updateGitignore(cwd)) {
+        // 检查是否需要手动配置 key/token
+        const serversNeedingSetup = checkMcpConfigNeedsSetup(mergedConfig);
+        if (serversNeedingSetup.length > 0) {
+          showMcpConfigHint(serversNeedingSetup, destPath);
+        }
+
+        if (updateGitignore(process.cwd(), isGlobal)) {
           log.info('已添加 .claude 到 .gitignore');
         }
         return;
@@ -588,9 +610,15 @@ export async function handleAdd(name) {
         };
 
         fs.writeFileSync(destPath, JSON.stringify(mergedConfig, null, 2) + '\n');
-        spinner.succeed(`已添加 MCP 配置 → .claude/.mcp.json`);
+        spinner.succeed(`已添加 MCP 配置 → ${targetPathPrefix}/.mcp.json`);
 
-        if (updateGitignore(cwd)) {
+        // 检查是否需要手动配置 key/token
+        const serversNeedingSetup = checkMcpConfigNeedsSetup(mergedConfig);
+        if (serversNeedingSetup.length > 0) {
+          showMcpConfigHint(serversNeedingSetup, destPath);
+        }
+
+        if (updateGitignore(process.cwd(), isGlobal)) {
           log.info('已添加 .claude 到 .gitignore');
         }
         return;
@@ -629,9 +657,9 @@ export async function handleAdd(name) {
         };
 
         fs.writeFileSync(destPath, JSON.stringify(mergedConfig, null, 2) + '\n');
-        spinner.succeed(`已添加 LSP 服务: ${actualName} → .claude/.lsp.json`);
+        spinner.succeed(`已添加 LSP 服务: ${actualName} → ${targetPathPrefix}/.lsp.json`);
 
-        if (updateGitignore(cwd)) {
+        if (updateGitignore(process.cwd(), isGlobal)) {
           log.info('已添加 .claude 到 .gitignore');
         }
         return;
@@ -659,9 +687,9 @@ export async function handleAdd(name) {
         };
 
         fs.writeFileSync(destPath, JSON.stringify(mergedConfig, null, 2) + '\n');
-        spinner.succeed(`已添加 LSP 配置 → .claude/.lsp.json`);
+        spinner.succeed(`已添加 LSP 配置 → ${targetPathPrefix}/.lsp.json`);
 
-        if (updateGitignore(cwd)) {
+        if (updateGitignore(process.cwd(), isGlobal)) {
           log.info('已添加 .claude 到 .gitignore');
         }
         return;

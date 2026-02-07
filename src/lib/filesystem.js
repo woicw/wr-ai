@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 
 export function copyDirectory(src, dest) {
   if (!fs.existsSync(src)) {
@@ -24,8 +25,18 @@ export function copyDirectory(src, dest) {
   }
 }
 
-export function ensureClaudeDir(cwd = process.cwd()) {
-  const claudeDir = path.join(cwd, '.claude');
+/**
+ * 确保配置目录存在
+ * @param {boolean} global - 是否使用全局目录（用户目录）
+ * @param {string} platform - 平台名称（目录名，如 'claude'）
+ * @param {string} cwd - 当前工作目录（仅在非全局模式下使用）
+ * @returns {string} 配置目录路径
+ */
+export function ensureClaudeDir(global = false, platform = 'claude', cwd = process.cwd()) {
+  const dirName = `.${platform}`;
+  const claudeDir = global
+    ? path.join(os.homedir(), dirName)
+    : path.join(cwd, dirName);
   if (!fs.existsSync(claudeDir)) {
     fs.mkdirSync(claudeDir, { recursive: true });
   }
@@ -71,7 +82,11 @@ export function copyFileOrDir(src, dest) {
 }
 
 // 更新 .gitignore，确保包含 .claude
-export function updateGitignore(cwd = process.cwd()) {
+export function updateGitignore(cwd = process.cwd(), global = false) {
+  // 全局模式下不更新 .gitignore
+  if (global) {
+    return false;
+  }
   const gitignorePath = path.join(cwd, '.gitignore');
   if (fs.existsSync(gitignorePath)) {
     const gitignoreContent = fs.readFileSync(gitignorePath, 'utf-8');

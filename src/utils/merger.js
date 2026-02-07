@@ -3,6 +3,78 @@ import path from 'path';
 import { validatePath, safeJsonParse } from './validator.js';
 import { copyFileOrDir } from '../lib/filesystem.js';
 import { log } from './logger.js';
+import * as c from 'yoctocolors';
+
+/**
+ * 检查 MCP 配置是否需要手动配置 key/token
+ * @param {Object} mcpConfig - MCP 配置对象
+ * @returns {Array} 需要配置的服务器列表
+ */
+export function checkMcpConfigNeedsSetup(mcpConfig) {
+  const needsSetup = [];
+
+  if (!mcpConfig.mcpServers || typeof mcpConfig.mcpServers !== 'object') {
+    return needsSetup;
+  }
+
+  Object.keys(mcpConfig.mcpServers).forEach((serverName) => {
+    const server = mcpConfig.mcpServers[serverName];
+    let needsConfig = false;
+
+    // 检查 env 字段中是否有需要配置的环境变量
+    if (server.env && typeof server.env === 'object') {
+      const envKeys = Object.keys(server.env);
+      const placeholderPattern = /\$\{[^}]+\}|<[^>]+>|your[_-]?[a-z]+[_-]?key|your[_-]?[a-z]+[_-]?token|api[_-]?key|secret[_-]?key/i;
+
+      for (const key of envKeys) {
+        const value = String(server.env[key] || '');
+        if (placeholderPattern.test(value) || value.trim() === '') {
+          needsConfig = true;
+          break;
+        }
+      }
+    }
+
+    // 检查 args 中是否有占位符
+    if (server.args && Array.isArray(server.args)) {
+      const placeholderPattern = /\$\{[^}]+\}|<[^>]+>|your[_-]?[a-z]+[_-]?key|your[_-]?[a-z]+[_-]?token/i;
+      for (const arg of server.args) {
+        if (typeof arg === 'string' && placeholderPattern.test(arg)) {
+          needsConfig = true;
+          break;
+        }
+      }
+    }
+
+    if (needsConfig) {
+      needsSetup.push(serverName);
+    }
+  });
+
+  return needsSetup;
+}
+
+/**
+ * 显示 MCP 配置提示信息
+ * @param {Array} serversNeedingSetup - 需要配置的服务器列表
+ * @param {string} configPath - 配置文件路径
+ */
+export function showMcpConfigHint(serversNeedingSetup, configPath) {
+  if (serversNeedingSetup.length === 0) {
+    return;
+  }
+
+  console.log();
+  log.warn('⚠️  MCP 配置需要手动设置 API Key/Token:');
+  console.log();
+  serversNeedingSetup.forEach((server) => {
+    console.log(`   • ${c.yellow(server)}`);
+  });
+  console.log();
+  console.log(`   请编辑配置文件: ${c.cyan(configPath)}`);
+  console.log(`   设置相应的环境变量或配置项`);
+  console.log();
+}
 
 /**
  * 安全地复制文件，包含路径验证
@@ -17,12 +89,12 @@ export function safeCopyFile(srcPath, destPath, srcBaseDir, destBaseDir = null) 
   try {
     // 验证源路径在源目录内
     validatePath(srcPath, srcBaseDir);
-    
+
     // 验证目标路径在目标目录内（如果提供了目标目录）
     if (destBaseDir) {
       validatePath(destPath, destBaseDir);
     }
-    
+
     const destDir = path.dirname(destPath);
     fs.mkdirSync(destDir, { recursive: true });
     fs.copyFileSync(srcPath, destPath);
@@ -47,12 +119,12 @@ export function safeCopyDir(srcPath, destPath, srcBaseDir, destBaseDir = null) {
   try {
     // 验证源路径在源目录内
     validatePath(srcPath, srcBaseDir);
-    
+
     // 验证目标路径在目标目录内（如果提供了目标目录）
     if (destBaseDir) {
       validatePath(destPath, destBaseDir);
     }
-    
+
     copyFileOrDir(srcPath, destPath);
     return true;
   } catch (error) {
@@ -84,11 +156,11 @@ export function mergeFileConfigs(
   srcBaseDir
 ) {
   // 输入验证
-  if (!Array.isArray(selectedCommands) || !Array.isArray(selectedSkills) || 
-      !Array.isArray(selectedAgents) || !Array.isArray(selectedHooks)) {
+  if (!Array.isArray(selectedCommands) || !Array.isArray(selectedSkills) ||
+    !Array.isArray(selectedAgents) || !Array.isArray(selectedHooks)) {
     throw new Error('选择项必须是数组类型');
   }
-  
+
   const { commandsDir, skillsDir, agentsDir, hooksDir } = sourceDirs;
   const addedItems = [];
   const updatedItems = [];
@@ -103,9 +175,9 @@ export function mergeFileConfigs(
       const srcPath = path.join(commandsDir, `${cmd}.md`);
       const destPath = path.join(destDir, `${cmd}.md`);
       const exists = fs.existsSync(destPath);
-      
+
       safeCopyFile(srcPath, destPath, srcBaseDir, resolvedClaudeDir);
-      
+
       const item = path.join('commands', `${cmd}.md`);
       if (exists) {
         updatedItems.push(item);
@@ -124,9 +196,9 @@ export function mergeFileConfigs(
       const srcPath = path.join(skillsDir, skill);
       const destPath = path.join(destDir, skill);
       const exists = fs.existsSync(destPath);
-      
+
       safeCopyDir(srcPath, destPath, srcBaseDir, resolvedClaudeDir);
-      
+
       const item = path.join('skills', `${skill}/`);
       if (exists) {
         updatedItems.push(item);
@@ -145,9 +217,9 @@ export function mergeFileConfigs(
       const srcPath = path.join(agentsDir, `${agent}.md`);
       const destPath = path.join(destDir, `${agent}.md`);
       const exists = fs.existsSync(destPath);
-      
+
       safeCopyFile(srcPath, destPath, srcBaseDir, resolvedClaudeDir);
-      
+
       const item = path.join('agents', `${agent}.md`);
       if (exists) {
         updatedItems.push(item);
@@ -166,9 +238,9 @@ export function mergeFileConfigs(
       const srcPath = path.join(hooksDir, `${hook}.json`);
       const destPath = path.join(destDir, `${hook}.json`);
       const exists = fs.existsSync(destPath);
-      
+
       safeCopyFile(srcPath, destPath, srcBaseDir, resolvedClaudeDir);
-      
+
       const item = path.join('hooks', `${hook}.json`);
       if (exists) {
         updatedItems.push(item);
@@ -244,6 +316,12 @@ export function mergeMcpConfig(
       }
     }
     throw error;
+  }
+
+  // 检查是否需要手动配置 key/token
+  const serversNeedingSetup = checkMcpConfigNeedsSetup(mergedConfig);
+  if (serversNeedingSetup.length > 0) {
+    showMcpConfigHint(serversNeedingSetup, destPath);
   }
 
   return exists ? 'updated' : 'added';

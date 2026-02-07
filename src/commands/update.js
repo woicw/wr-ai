@@ -1,4 +1,4 @@
-import { getOrigin } from '../lib/config.js';
+import { getOrigin, getPlatform } from '../lib/config.js';
 import { cloneOrUpdateRepo, getRepoDir } from '../lib/repository.js';
 import { ensureClaudeDir, updateGitignore } from '../lib/filesystem.js';
 import { select } from '@inquirer/prompts';
@@ -12,7 +12,7 @@ import { readConfigLists, parseSelection } from '../utils/parser.js';
 import { buildOptions, selectConfigs, confirmAction } from '../utils/prompts.js';
 import { mergeFileConfigs, mergeMcpConfig, mergeLspConfig, checkNeedConfirm } from '../utils/merger.js';
 
-export async function handleUpdate() {
+export async function handleUpdate(options = {}) {
   const origin = getOrigin();
   if (!origin) {
     log.error('请先使用 "wr-ai set github <url>" 设置 GitHub 地址');
@@ -90,8 +90,10 @@ export async function handleUpdate() {
     // 选择配置
     const selected = await selectConfigs(options, '请选择要更新的配置（空格选择，回车确认）:');
 
-    const cwd = process.cwd();
-    const claudeDir = ensureClaudeDir(cwd);
+    const isGlobal = options.global || false;
+    const platform = getPlatform();
+    const claudeDir = ensureClaudeDir(isGlobal, platform);
+    const dirName = `.${platform}`;
 
     // 解析选择结果
     const selection = parseSelection(selected, commands, skills, agents, hooks, mcpServers, lspServices);
@@ -102,7 +104,7 @@ export async function handleUpdate() {
       await confirmAction(confirmMessage);
     }
 
-    const updateSpinner = ora('正在合并到 .claude/...').start();
+    const updateSpinner = ora(`正在合并到 ${dirName}/...`).start();
 
     // 合并文件配置
     const fileResults = mergeFileConfigs(
@@ -138,8 +140,9 @@ export async function handleUpdate() {
     }
 
     // 输出结果
+    const targetPath = isGlobal ? `~/${dirName}/` : `${dirName}/`;
     const totalItems = updatedItems.length + addedItems.length;
-    let successMsg = `已合并 ${totalItems} 个项目:\n`;
+    let successMsg = `已合并 ${totalItems} 个项目到 ${targetPath}:\n`;
     if (addedItems.length > 0) {
       successMsg += c.green(`  新增: ${addedItems.length} 个\n`);
     }
@@ -155,9 +158,11 @@ export async function handleUpdate() {
     }
     updateSpinner.succeed(successMsg);
 
-    // 更新 .gitignore
-    if (updateGitignore(cwd)) {
-      log.info('已添加 .claude 到 .gitignore');
+    // 更新 .gitignore（仅在非全局模式下）
+    if (!isGlobal) {
+      if (updateGitignore(process.cwd(), false)) {
+        log.info('已添加 .claude 到 .gitignore');
+      }
     }
   } catch (error) {
     // 检查是否是用户取消操作（Ctrl+C）

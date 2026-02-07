@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 
 import { Command } from "commander";
-import { handleSet } from "./commands/set.js";
+import { handleSet, handleSetPlatform } from "./commands/set.js";
 import { handleInit } from "./commands/init.js";
 import { handleList } from "./commands/list.js";
 import { handleUpdate } from "./commands/update.js";
 import { handleClear } from "./commands/clear.js";
 import { handleAdd } from "./commands/add.js";
+import { handleReset } from "./commands/reset.js";
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
@@ -34,24 +35,49 @@ setCommand
   .argument("<url>", "GitHub 仓库地址")
   .action(handleSet);
 
-program
+setCommand
+  .command("platform")
+  .description("设置平台名称（目录名）")
+  .argument("<platform>", "平台名称（如 claude，将保存在 .claude/ 目录）")
+  .action(handleSetPlatform);
+
+const initCommand = program
   .command("init")
   .description("初始化配置到当前目录")
+  .argument("[type]", "配置类型 (command/skill/agent/hook/mcp/lsp)")
+  .option("-a, --all", "初始化所有配置")
+  .option("-g, --global", "保存到用户目录 (~/.claude/)")
   .action(handleInit);
 
-program.command("list").description("列出所有可用配置").action(handleList);
+program
+  .command("list")
+  .description("列出所有可用配置")
+  .argument("[type]", "配置类型 (command/skill/agent/hook/mcp/lsp)")
+  .action(handleList);
 
 program
   .command("add")
   .description("添加指定的 command 或 skill")
   .argument("<name>", "command 或 skill 名称")
+  .option("-g, --global", "保存到用户目录 (~/.claude/)")
   .action(handleAdd);
 
-program.command("update").description("更新配置").action(handleUpdate);
+program
+  .command("update")
+  .description("更新配置")
+  .option("-g, --global", "更新用户目录 (~/.claude/)")
+  .action(handleUpdate);
 
 program
   .command("clear")
   .description("删除 .wr-ai 文件夹（包括配置和模板）")
   .action(handleClear);
+
+program
+  .command("reset")
+  .description("重置指定的文件夹或文件")
+  .argument("<target>", "文件夹名（commands/skills/agents/hooks）或文件名（.mcp.json/.lsp.json）")
+  .option("-g, --global", "重置用户目录 (~/.claude/) 下的文件")
+  .action(handleReset);
 
 program.parse();
