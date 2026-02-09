@@ -26,3 +26,26 @@ export const MAX_DISPLAY_ITEMS = 10;
 
 // 模板目录路径
 export const TEMPLATES_DIR = path.join(os.homedir(), '.wr-ai', 'templates');
+
+// 有效类型列表
+export const VALID_TYPES = ['command', 'skill', 'agent', 'hook', 'mcp', 'lsp'];
+
+// 类型别名映射
+const TYPE_ALIASES = {
+  cmd: 'command',
+  commands: 'command',
+  skills: 'skill',
+  agents: 'agent',
+  hooks: 'hook',
+};
+
+/**
+ * 规范化类型名称，支持别名
+ * @param {string} type - 用户输入的类型
+ * @returns {string} 标准化后的类型
+ */
+export function normalizeType(type) {
+  if (!type) return type;
+  const lower = type.toLowerCase();
+  return TYPE_ALIASES[lower] || lower;
+}

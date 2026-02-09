@@ -58,19 +58,21 @@ export async function handleReset(target, options = {}) {
     return;
   }
 
-  // 确认操作
+  // 确认操作（除非 --yes）
   const displayPath = isGlobal 
     ? `~/${dirName}/${displayName}`
     : `${dirName}/${displayName}`;
   
-  const confirmed = await confirm({
-    message: `确定要重置 ${c.yellow(displayName)} 吗？这将删除 ${c.cyan(displayPath)}`,
-    default: false,
-  });
+  if (!options.yes) {
+    const confirmed = await confirm({
+      message: `确定要重置 ${c.yellow(displayName)} 吗？这将删除 ${c.cyan(displayPath)}`,
+      default: false,
+    });
 
-  if (!confirmed) {
-    log.info('已取消操作');
-    return;
+    if (!confirmed) {
+      log.info('已取消操作');
+      return;
+    }
   }
 
   const spinner = ora(`正在重置 ${displayName}...`).start();

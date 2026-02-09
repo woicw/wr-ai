@@ -1,12 +1,9 @@
 import { getOrigin, getPlatform } from '../lib/config.js';
-import { cloneOrUpdateRepo, getRepoDir } from '../lib/repository.js';
 import { ensureClaudeDir, updateGitignore } from '../lib/filesystem.js';
-import { select } from '@inquirer/prompts';
+import { resolveSource } from '../lib/source.js';
 import * as c from 'yoctocolors';
 import ora from 'ora';
-import fs from 'fs';
-import path from 'path';
-import { EXCLUDE_LIST, DEFAULT_SOURCE, MAX_DISPLAY_ITEMS } from '../utils/constants.js';
+import { MAX_DISPLAY_ITEMS } from '../utils/constants.js';
 import { log } from '../utils/logger.js';
 import { readConfigLists, parseSelection } from '../utils/parser.js';
 import { buildOptions, selectConfigs, confirmAction } from '../utils/prompts.js';
@@ -22,43 +19,7 @@ export async function handleUpdate(options = {}) {
   const spinner = ora('正在更新配置...').start();
 
   try {
-    await cloneOrUpdateRepo(origin);
-    const repoDir = getRepoDir(origin);
-
-    // 读取根目录下的所有目录
-    const items = fs.readdirSync(repoDir, { withFileTypes: true })
-      .filter((item) => item.isDirectory() && !EXCLUDE_LIST.includes(item.name))
-      .map((item) => item.name);
-
-    if (items.length === 0) {
-      spinner.fail('仓库中未找到可用配置');
-      process.exit(1);
-    }
-
-    spinner.stop();
-
-    // 确定配置来源
-    let sourceDir;
-    if (items.includes(DEFAULT_SOURCE)) {
-      sourceDir = DEFAULT_SOURCE;
-    } else {
-      try {
-        sourceDir = await select({
-          message: c.bold('请选择配置来源:'),
-          choices: items.map((name) => ({
-            name: c.cyan(`📁 ${name}`),
-            value: name,
-            description: c.dim(`配置目录: ${name}/`),
-          })),
-        });
-      } catch (error) {
-        log.info('已取消');
-        process.exit(0);
-      }
-    }
-
-    const sourcePath = path.join(repoDir, sourceDir);
-    const srcBaseDir = path.resolve(sourcePath);
+    const { sourcePath, srcBaseDir } = await resolveSource(origin, spinner);
 
     // 读取配置列表
     const configLists = readConfigLists(sourcePath);
@@ -85,10 +46,10 @@ export async function handleUpdate(options = {}) {
     }
 
     // 构建选项
-    const options = buildOptions(commands, skills, agents, hooks, mcpServers, lspServices, hasMcp, hasLsp, '更新');
+    const configOptions = buildOptions(commands, skills, agents, hooks, mcpServers, lspServices, hasMcp, hasLsp, '更新');
 
     // 选择配置
-    const selected = await selectConfigs(options, '请选择要更新的配置（空格选择，回车确认）:');
+    const selected = await selectConfigs(configOptions, '请选择要更新的配置（空格选择，回车确认）:');
 
     const isGlobal = options.global || false;
     const platform = getPlatform();
@@ -160,8 +121,8 @@ export async function handleUpdate(options = {}) {
 
     // 更新 .gitignore（仅在非全局模式下）
     if (!isGlobal) {
-      if (updateGitignore(process.cwd(), false)) {
-        log.info('已添加 .claude 到 .gitignore');
+      if (updateGitignore(process.cwd(), false, platform)) {
+        log.info(`已添加 .${platform} 到 .gitignore`);
       }
     }
   } catch (error) {

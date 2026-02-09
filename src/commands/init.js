@@ -1,12 +1,9 @@
 import { getOrigin, getPlatform } from '../lib/config.js';
-import { cloneOrUpdateRepo, getRepoDir } from '../lib/repository.js';
 import { ensureClaudeDir, updateGitignore } from '../lib/filesystem.js';
-import { select } from '@inquirer/prompts';
+import { resolveSource } from '../lib/source.js';
 import * as c from 'yoctocolors';
 import ora from 'ora';
-import fs from 'fs';
-import path from 'path';
-import { EXCLUDE_LIST, DEFAULT_SOURCE, MAX_DISPLAY_ITEMS, OPTION_VALUES } from '../utils/constants.js';
+import { MAX_DISPLAY_ITEMS, OPTION_VALUES, VALID_TYPES, normalizeType } from '../utils/constants.js';
 import { log } from '../utils/logger.js';
 import { readConfigLists, parseSelection } from '../utils/parser.js';
 import { buildOptions, selectConfigs, confirmAction, selectType, filterOptionsByType } from '../utils/prompts.js';
@@ -102,8 +99,8 @@ async function performMergeAndOutput(params) {
   // 更新 .gitignore（仅在非全局模式下）
   if (!params.global) {
     const cwd = process.cwd();
-    if (updateGitignore(cwd, false)) {
-      log.info('已添加 .claude 到 .gitignore');
+    if (updateGitignore(cwd, false, platform)) {
+      log.info(`已添加 .${platform} 到 .gitignore`);
     }
   }
 }
@@ -118,43 +115,7 @@ export async function handleInit(type, options = {}) {
   const spinner = ora('正在获取AI配置...').start();
 
   try {
-    await cloneOrUpdateRepo(origin);
-    const repoDir = getRepoDir(origin);
-
-    // 读取根目录下的所有目录
-    const items = fs.readdirSync(repoDir, { withFileTypes: true })
-      .filter((item) => item.isDirectory() && !EXCLUDE_LIST.includes(item.name))
-      .map((item) => item.name);
-
-    if (items.length === 0) {
-      spinner.fail('仓库中未找到可用配置');
-      process.exit(1);
-    }
-
-    spinner.stop();
-
-    // 确定配置来源
-    let sourceDir;
-    if (items.includes(DEFAULT_SOURCE)) {
-      sourceDir = DEFAULT_SOURCE;
-    } else {
-      try {
-        sourceDir = await select({
-          message: c.bold('请选择配置来源:'),
-          choices: items.map((name) => ({
-            name: c.cyan(`📁 ${name}`),
-            value: name,
-            description: c.dim(`配置目录: ${name}/`),
-          })),
-        });
-      } catch (error) {
-        log.info('已取消');
-        process.exit(0);
-      }
-    }
-
-    const sourcePath = path.join(repoDir, sourceDir);
-    const srcBaseDir = path.resolve(sourcePath);
+    const { sourcePath, srcBaseDir } = await resolveSource(origin, spinner);
 
     // 读取配置列表
     const configLists = readConfigLists(sourcePath);
@@ -219,17 +180,16 @@ export async function handleInit(type, options = {}) {
     }
 
     // 如果未指定类型，让用户选择类型
-    let selectedType = type;
+    let selectedType = type ? normalizeType(type) : null;
     if (!selectedType) {
       selectedType = await selectType(configLists);
       // selectedType 可能为 null（全部类型）或具体的类型字符串
     }
 
     // 验证类型
-    const validTypes = ['command', 'skill', 'agent', 'hook', 'mcp', 'lsp'];
-    if (selectedType && !validTypes.includes(selectedType)) {
+    if (selectedType && !VALID_TYPES.includes(selectedType)) {
       log.error(`无效的类型: ${selectedType}`);
-      log.info(`支持的类型: ${validTypes.join(', ')}`);
+      log.info(`支持的类型: ${VALID_TYPES.join(', ')}`);
       process.exit(1);
     }
 

@@ -81,17 +81,18 @@ export function copyFileOrDir(src, dest) {
   }
 }
 
-// 更新 .gitignore，确保包含 .claude
-export function updateGitignore(cwd = process.cwd(), global = false) {
+// 更新 .gitignore，确保包含平台目录
+export function updateGitignore(cwd = process.cwd(), global = false, platform = 'claude') {
   // 全局模式下不更新 .gitignore
   if (global) {
     return false;
   }
   const gitignorePath = path.join(cwd, '.gitignore');
+  const dirName = `.${platform}`;
   if (fs.existsSync(gitignorePath)) {
     const gitignoreContent = fs.readFileSync(gitignorePath, 'utf-8');
-    if (!gitignoreContent.includes('.claude')) {
-      fs.appendFileSync(gitignorePath, '\n.claude\n');
+    if (!gitignoreContent.includes(dirName)) {
+      fs.appendFileSync(gitignorePath, `\n${dirName}\n`);
       return true;
     }
   }

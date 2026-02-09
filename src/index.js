@@ -57,8 +57,8 @@ program
 
 program
   .command("add")
-  .description("添加指定的 command 或 skill")
-  .argument("<name>", "command 或 skill 名称")
+  .description("添加指定的配置项（command/skill/agent/hook/mcp/lsp）")
+  .argument("<name>", "配置名称，支持 <type>:<name> 格式（如 mcp:server-name）")
   .option("-g, --global", "保存到用户目录 (~/.claude/)")
   .action(handleAdd);
 
@@ -71,6 +71,7 @@ program
 program
   .command("clear")
   .description("删除 .wr-ai 文件夹（包括配置和模板）")
+  .option("-y, --yes", "跳过确认提示")
   .action(handleClear);
 
 program
@@ -78,6 +79,7 @@ program
   .description("重置指定的文件夹或文件")
   .argument("<target>", "文件夹名（commands/skills/agents/hooks）或文件名（.mcp.json/.lsp.json）")
   .option("-g, --global", "重置用户目录 (~/.claude/) 下的文件")
+  .option("-y, --yes", "跳过确认提示")
   .action(handleReset);
 
 program.parse();

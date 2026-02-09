@@ -450,3 +450,146 @@ export function checkNeedConfirm(
 
   return null;
 }
+
+// ============================================
+// 以下为 add 命令使用的单项操作辅助函数
+// ============================================
+
+/**
+ * 添加单个文件类型配置（command/agent/hook）
+ * @param {Object} params
+ * @param {string} params.srcDir - 源目录路径
+ * @param {string} params.name - 配置名称
+ * @param {string} params.ext - 文件扩展名（如 '.md'、'.json'）
+ * @param {string} params.claudeDir - 目标 .claude 目录
+ * @param {string} params.subDir - 子目录名（如 'commands'）
+ * @returns {boolean} 是否找到并复制成功
+ */
+export function addSingleFileConfig({ srcDir, name, ext, claudeDir, subDir }) {
+  const srcPath = path.join(srcDir, `${name}${ext}`);
+  if (!fs.existsSync(srcPath)) return false;
+
+  const destDir = path.join(claudeDir, subDir);
+  fs.mkdirSync(destDir, { recursive: true });
+  fs.copyFileSync(srcPath, path.join(destDir, `${name}${ext}`));
+  return true;
+}
+
+/**
+ * 添加单个 skill 目录
+ * @param {string} skillsDir - skills 源目录
+ * @param {string} name - skill 名称
+ * @param {string} claudeDir - 目标 .claude 目录
+ * @returns {boolean} 是否找到并复制成功
+ */
+export function addSingleSkill(skillsDir, name, claudeDir) {
+  const srcPath = path.join(skillsDir, name);
+  if (!fs.existsSync(srcPath) || !fs.statSync(srcPath).isDirectory()) return false;
+
+  const destPath = path.join(claudeDir, 'skills', name);
+  copyFileOrDir(srcPath, destPath);
+  return true;
+}
+
+/**
+ * 读取 JSON 配置文件的 servers/services
+ * @param {string} filePath - JSON 文件路径
+ * @param {string} [wrapKey] - 包裹键名（如 'mcpServers'），null 表示顶层
+ * @returns {{ config: Object, keys: string[] }}
+ */
+export function readJsonConfig(filePath, wrapKey = null) {
+  if (!fs.existsSync(filePath)) return { config: {}, keys: [] };
+  const config = safeJsonParse(filePath, {});
+  const data = wrapKey ? (config[wrapKey] || {}) : config;
+  return { config, keys: Object.keys(data) };
+}
+
+/**
+ * 合并单个或全部 MCP 服务器到本地
+ * @param {string} remoteMcpFile - 远程 .mcp.json 路径
+ * @param {string} claudeDir - 目标目录
+ * @param {string|null} serverName - 服务器名（null 表示全部）
+ * @returns {{ success: boolean, destPath: string }}
+ */
+export function addMcpServers(remoteMcpFile, claudeDir, serverName = null) {
+  const destPath = path.join(claudeDir, '.mcp.json');
+
+  const remoteConfig = safeJsonParse(remoteMcpFile, {}, true);
+  const localConfig = fs.existsSync(destPath) ? safeJsonParse(destPath, {}) : {};
+
+  if (serverName && (!remoteConfig.mcpServers || !remoteConfig.mcpServers[serverName])) {
+    return { success: false, destPath };
+  }
+
+  const serversToAdd = serverName
+    ? { [serverName]: remoteConfig.mcpServers[serverName] }
+    : (remoteConfig.mcpServers || {});
+
+  const mergedConfig = {
+    mcpServers: {
+      ...(localConfig.mcpServers || {}),
+      ...serversToAdd,
+    },
+  };
+
+  // 原子性写入
+  const tempPath = destPath + '.tmp';
+  try {
+    fs.writeFileSync(tempPath, JSON.stringify(mergedConfig, null, 2) + '\n');
+    fs.renameSync(tempPath, destPath);
+  } catch (error) {
+    if (fs.existsSync(tempPath)) {
+      try { fs.unlinkSync(tempPath); } catch (_) { /* ignore */ }
+    }
+    throw error;
+  }
+
+  // 检查 key/token 提示
+  const serversNeedingSetup = checkMcpConfigNeedsSetup(mergedConfig);
+  if (serversNeedingSetup.length > 0) {
+    showMcpConfigHint(serversNeedingSetup, destPath);
+  }
+
+  return { success: true, destPath };
+}
+
+/**
+ * 合并单个或全部 LSP 服务到本地
+ * @param {string} remoteLspFile - 远程 .lsp.json 路径
+ * @param {string} claudeDir - 目标目录
+ * @param {string|null} serviceName - 服务名（null 表示全部）
+ * @returns {{ success: boolean, destPath: string }}
+ */
+export function addLspServices(remoteLspFile, claudeDir, serviceName = null) {
+  const destPath = path.join(claudeDir, '.lsp.json');
+
+  const remoteConfig = safeJsonParse(remoteLspFile, {}, true);
+  const localConfig = fs.existsSync(destPath) ? safeJsonParse(destPath, {}) : {};
+
+  if (serviceName && !remoteConfig[serviceName]) {
+    return { success: false, destPath };
+  }
+
+  const servicesToAdd = serviceName
+    ? { [serviceName]: remoteConfig[serviceName] }
+    : remoteConfig;
+
+  const mergedConfig = {
+    ...localConfig,
+    ...servicesToAdd,
+  };
+
+  // 原子性写入
+  const tempPath = destPath + '.tmp';
+  try {
+    fs.writeFileSync(tempPath, JSON.stringify(mergedConfig, null, 2) + '\n');
+    fs.renameSync(tempPath, destPath);
+  } catch (error) {
+    if (fs.existsSync(tempPath)) {
+      try { fs.unlinkSync(tempPath); } catch (_) { /* ignore */ }
+    }
+    throw error;
+  }
+
+  return { success: true, destPath };
+}

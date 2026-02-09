@@ -171,23 +171,6 @@ export async function cloneOrUpdateRepo(url, options = {}) {
 }
 
 /**
- * 列出仓库中的模板目录
- * @param {string} url - Git 仓库 URL
- * @returns {Promise<string[]>} 模板目录名称数组
- */
-export async function listTemplates(url) {
-  const repoDir = await cloneOrUpdateRepo(url);
-  const templatesPath = path.join(repoDir, "templates");
-
-  if (!fs.existsSync(templatesPath)) {
-    return [];
-  }
-
-  const items = fs.readdirSync(templatesPath, { withFileTypes: true });
-  return items.filter((item) => item.isDirectory()).map((item) => item.name);
-}
-
-/**
  * 获取仓库的本地目录路径
  * @param {string} url - Git 仓库 URL
  * @returns {string} 仓库本地目录路径
@@ -201,11 +184,3 @@ export function getRepoDir(url) {
   return path.join(TEMPLATES_DIR, repoPath.replace(/\//g, "_"));
 }
 
-/**
- * 获取模板目录路径（兼容性函数）
- * @param {string} url - Git 仓库 URL
- * @returns {string} 仓库本地目录路径
- */
-export function getTemplatesDir(url) {
-  return getRepoDir(url);
-}
