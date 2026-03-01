@@ -1,5 +1,5 @@
 import { getOrigin, getPlatform } from "../lib/config.js";
-import { ensureClaudeDir, updateGitignore } from "../lib/filesystem.js";
+import { resolveTargetDirectories, isValidPlatformName, updateGitignore } from "../lib/filesystem.js";
 import { resolveSource } from "../lib/source.js";
 import ora from "ora";
 import fs from "fs";
@@ -58,11 +58,22 @@ function listAvailableItems(sourcePath, filterType, mcpServers, lspServices) {
 }
 
 /**
+ * 格式化多目标路径展示
+ */
+function formatDestinations(targetDirs, relativePath) {
+  return targetDirs
+    .map((target) => `${target.targetPathPrefix}/${relativePath}`)
+    .join(", ");
+}
+
+/**
  * 完成添加后的公共收尾逻辑
  */
-function afterAdd(isGlobal, platform) {
-  if (updateGitignore(process.cwd(), isGlobal, platform)) {
-    log.info(`已添加 .${platform} 到 .gitignore`);
+function afterAddTargets(isGlobal, targetDirs) {
+  for (const target of targetDirs) {
+    if (updateGitignore(process.cwd(), isGlobal, target.platform)) {
+      log.info(`已添加 .${target.platform} 到 .gitignore`);
+    }
   }
 }
 
@@ -98,10 +109,20 @@ export async function handleAdd(name, options = {}) {
     spinner.start(`正在查找 "${name}"...`);
 
     const isGlobal = options.global || false;
-    const platform = getPlatform();
-    const claudeDir = ensureClaudeDir(isGlobal, platform);
-    const dirName = `.${platform}`;
-    const targetPathPrefix = isGlobal ? `~/${dirName}` : dirName;
+    const fallbackPlatform = getPlatform();
+    if (options.platform && !isValidPlatformName(options.platform)) {
+      log.error("平台名称只能包含字母、数字、连字符和下划线");
+      process.exit(1);
+    }
+    const targetDirs = resolveTargetDirectories({
+      global: isGlobal,
+      platform: options.platform,
+      fallbackPlatform,
+      cwd: process.cwd(),
+    });
+    if (targetDirs.length > 1) {
+      log.info(`检测到多个 AI 配置目录，将同步到: ${targetDirs.map((t) => t.dirName).join(", ")}`);
+    }
 
     // 源目录路径
     const commandsDir = path.join(sourcePath, "commands");
@@ -119,11 +140,11 @@ export async function handleAdd(name, options = {}) {
     if (type) {
       const result = addByType(type, actualName, {
         commandsDir, skillsDir, agentsDir, hooksDir, mcpFile, lspFile,
-        claudeDir, targetPathPrefix, spinner, mcpServers, lspServices,
+        targetDirs, spinner, mcpServers, lspServices,
       });
 
       if (result) {
-        afterAdd(isGlobal, platform);
+        afterAddTargets(isGlobal, targetDirs);
         return;
       }
 
@@ -134,67 +155,87 @@ export async function handleAdd(name, options = {}) {
 
     // ========== 未指定类型，按优先级自动检测 ==========
     // 1. command
-    if (addSingleFileConfig({ srcDir: commandsDir, name: actualName, ext: ".md", claudeDir, subDir: "commands" })) {
-      spinner.succeed(`已添加 command: ${actualName} → ${targetPathPrefix}/commands/${actualName}.md`);
-      afterAdd(isGlobal, platform);
-      return;
+    const commandPath = path.join(commandsDir, `${actualName}.md`);
+    if (fs.existsSync(commandPath)) {
+      const result = addByType("command", actualName, {
+        commandsDir, skillsDir, agentsDir, hooksDir, mcpFile, lspFile,
+        targetDirs, spinner, mcpServers, lspServices,
+      });
+      if (result) {
+        afterAddTargets(isGlobal, targetDirs);
+        return;
+      }
+      process.exit(1);
     }
 
     // 2. skill
-    if (addSingleSkill(skillsDir, actualName, claudeDir)) {
-      spinner.succeed(`已添加 skill: ${actualName} → ${targetPathPrefix}/skills/${actualName}/`);
-      afterAdd(isGlobal, platform);
-      return;
+    const skillPath = path.join(skillsDir, actualName);
+    if (fs.existsSync(skillPath) && fs.statSync(skillPath).isDirectory()) {
+      const result = addByType("skill", actualName, {
+        commandsDir, skillsDir, agentsDir, hooksDir, mcpFile, lspFile,
+        targetDirs, spinner, mcpServers, lspServices,
+      });
+      if (result) {
+        afterAddTargets(isGlobal, targetDirs);
+        return;
+      }
+      process.exit(1);
     }
 
     // 3. agent
-    if (addSingleFileConfig({ srcDir: agentsDir, name: actualName, ext: ".md", claudeDir, subDir: "agents" })) {
-      spinner.succeed(`已添加 agent: ${actualName} → ${targetPathPrefix}/agents/${actualName}.md`);
-      afterAdd(isGlobal, platform);
-      return;
+    const agentPath = path.join(agentsDir, `${actualName}.md`);
+    if (fs.existsSync(agentPath)) {
+      const result = addByType("agent", actualName, {
+        commandsDir, skillsDir, agentsDir, hooksDir, mcpFile, lspFile,
+        targetDirs, spinner, mcpServers, lspServices,
+      });
+      if (result) {
+        afterAddTargets(isGlobal, targetDirs);
+        return;
+      }
+      process.exit(1);
     }
 
     // 4. hook
-    if (addSingleFileConfig({ srcDir: hooksDir, name: actualName, ext: ".json", claudeDir, subDir: "hooks" })) {
-      spinner.succeed(`已添加 hook: ${actualName} → ${targetPathPrefix}/hooks/${actualName}.json`);
-      afterAdd(isGlobal, platform);
-      return;
+    const hookPath = path.join(hooksDir, `${actualName}.json`);
+    if (fs.existsSync(hookPath)) {
+      const result = addByType("hook", actualName, {
+        commandsDir, skillsDir, agentsDir, hooksDir, mcpFile, lspFile,
+        targetDirs, spinner, mcpServers, lspServices,
+      });
+      if (result) {
+        afterAddTargets(isGlobal, targetDirs);
+        return;
+      }
+      process.exit(1);
     }
 
     // 5. mcp（单个服务器名或 "mcp" 全部）
-    if (fs.existsSync(mcpFile)) {
-      if (mcpServers.includes(actualName)) {
-        const { success } = addMcpServers(mcpFile, claudeDir, actualName);
-        if (success) {
-          spinner.succeed(`已添加 MCP 服务器: ${actualName} → ${targetPathPrefix}/.mcp.json`);
-          afterAdd(isGlobal, platform);
-          return;
-        }
-      }
-      if (actualName === "mcp") {
-        addMcpServers(mcpFile, claudeDir, null);
-        spinner.succeed(`已添加 MCP 配置 → ${targetPathPrefix}/.mcp.json`);
-        afterAdd(isGlobal, platform);
+    if (fs.existsSync(mcpFile) && (mcpServers.includes(actualName) || actualName === "mcp")) {
+      const serverName = actualName === "mcp" ? "" : actualName;
+      const result = addByType("mcp", serverName, {
+        commandsDir, skillsDir, agentsDir, hooksDir, mcpFile, lspFile,
+        targetDirs, spinner, mcpServers, lspServices,
+      });
+      if (result) {
+        afterAddTargets(isGlobal, targetDirs);
         return;
       }
+      process.exit(1);
     }
 
     // 6. lsp（单个服务名或 "lsp" 全部）
-    if (fs.existsSync(lspFile)) {
-      if (lspServices.includes(actualName)) {
-        const { success } = addLspServices(lspFile, claudeDir, actualName);
-        if (success) {
-          spinner.succeed(`已添加 LSP 服务: ${actualName} → ${targetPathPrefix}/.lsp.json`);
-          afterAdd(isGlobal, platform);
-          return;
-        }
-      }
-      if (actualName === "lsp") {
-        addLspServices(lspFile, claudeDir, null);
-        spinner.succeed(`已添加 LSP 配置 → ${targetPathPrefix}/.lsp.json`);
-        afterAdd(isGlobal, platform);
+    if (fs.existsSync(lspFile) && (lspServices.includes(actualName) || actualName === "lsp")) {
+      const serviceName = actualName === "lsp" ? "" : actualName;
+      const result = addByType("lsp", serviceName, {
+        commandsDir, skillsDir, agentsDir, hooksDir, mcpFile, lspFile,
+        targetDirs, spinner, mcpServers, lspServices,
+      });
+      if (result) {
+        afterAddTargets(isGlobal, targetDirs);
         return;
       }
+      process.exit(1);
     }
 
     // 未找到
@@ -227,43 +268,59 @@ export async function handleAdd(name, options = {}) {
 function addByType(type, name, ctx) {
   const {
     commandsDir, skillsDir, agentsDir, hooksDir, mcpFile, lspFile,
-    claudeDir, targetPathPrefix, spinner, mcpServers, lspServices,
+    targetDirs, spinner, mcpServers, lspServices,
   } = ctx;
 
   switch (type) {
     case "command": {
-      if (!addSingleFileConfig({ srcDir: commandsDir, name, ext: ".md", claudeDir, subDir: "commands" })) {
+      const srcPath = path.join(commandsDir, `${name}.md`);
+      if (!fs.existsSync(srcPath)) {
         spinner.fail(`未找到 command: ${name}`);
         return false;
       }
-      spinner.succeed(`已添加 command: ${name} → ${targetPathPrefix}/commands/${name}.md`);
+      for (const target of targetDirs) {
+        addSingleFileConfig({ srcDir: commandsDir, name, ext: ".md", claudeDir: target.claudeDir, subDir: "commands" });
+      }
+      spinner.succeed(`已添加 command: ${name} → ${formatDestinations(targetDirs, `commands/${name}.md`)}`);
       return true;
     }
 
     case "skill": {
-      if (!addSingleSkill(skillsDir, name, claudeDir)) {
+      const srcPath = path.join(skillsDir, name);
+      if (!fs.existsSync(srcPath) || !fs.statSync(srcPath).isDirectory()) {
         spinner.fail(`未找到 skill: ${name}`);
         return false;
       }
-      spinner.succeed(`已添加 skill: ${name} → ${targetPathPrefix}/skills/${name}/`);
+      for (const target of targetDirs) {
+        addSingleSkill(skillsDir, name, target.claudeDir);
+      }
+      spinner.succeed(`已添加 skill: ${name} → ${formatDestinations(targetDirs, `skills/${name}/`)}`);
       return true;
     }
 
     case "agent": {
-      if (!addSingleFileConfig({ srcDir: agentsDir, name, ext: ".md", claudeDir, subDir: "agents" })) {
+      const srcPath = path.join(agentsDir, `${name}.md`);
+      if (!fs.existsSync(srcPath)) {
         spinner.fail(`未找到 agent: ${name}`);
         return false;
       }
-      spinner.succeed(`已添加 agent: ${name} → ${targetPathPrefix}/agents/${name}.md`);
+      for (const target of targetDirs) {
+        addSingleFileConfig({ srcDir: agentsDir, name, ext: ".md", claudeDir: target.claudeDir, subDir: "agents" });
+      }
+      spinner.succeed(`已添加 agent: ${name} → ${formatDestinations(targetDirs, `agents/${name}.md`)}`);
       return true;
     }
 
     case "hook": {
-      if (!addSingleFileConfig({ srcDir: hooksDir, name, ext: ".json", claudeDir, subDir: "hooks" })) {
+      const srcPath = path.join(hooksDir, `${name}.json`);
+      if (!fs.existsSync(srcPath)) {
         spinner.fail(`未找到 hook: ${name}`);
         return false;
       }
-      spinner.succeed(`已添加 hook: ${name} → ${targetPathPrefix}/hooks/${name}.json`);
+      for (const target of targetDirs) {
+        addSingleFileConfig({ srcDir: hooksDir, name, ext: ".json", claudeDir: target.claudeDir, subDir: "hooks" });
+      }
+      spinner.succeed(`已添加 hook: ${name} → ${formatDestinations(targetDirs, `hooks/${name}.json`)}`);
       return true;
     }
 
@@ -274,8 +331,7 @@ function addByType(type, name, ctx) {
       }
       // mcp: (空名称) → 全部; mcp:server-name → 单个
       const serverName = name === "" ? null : name;
-      const { success } = addMcpServers(mcpFile, claudeDir, serverName);
-      if (!success) {
+      if (serverName && !mcpServers.includes(serverName)) {
         spinner.fail(`未找到 MCP 服务器: ${name}`);
         if (mcpServers.length > 0) {
           console.log("\n可用的 MCP 服务器:");
@@ -283,8 +339,16 @@ function addByType(type, name, ctx) {
         }
         return false;
       }
+
+      for (const target of targetDirs) {
+        const { success } = addMcpServers(mcpFile, target.claudeDir, serverName);
+        if (!success) {
+          spinner.fail(`同步 MCP 配置到 ${target.dirName} 失败`);
+          return false;
+        }
+      }
       const label = serverName ? `MCP 服务器: ${name}` : "MCP 配置";
-      spinner.succeed(`已添加 ${label} → ${targetPathPrefix}/.mcp.json`);
+      spinner.succeed(`已添加 ${label} → ${formatDestinations(targetDirs, ".mcp.json")}`);
       return true;
     }
 
@@ -294,8 +358,7 @@ function addByType(type, name, ctx) {
         return false;
       }
       const serviceName = name === "" ? null : name;
-      const { success } = addLspServices(lspFile, claudeDir, serviceName);
-      if (!success) {
+      if (serviceName && !lspServices.includes(serviceName)) {
         spinner.fail(`未找到 LSP 服务: ${name}`);
         if (lspServices.length > 0) {
           console.log("\n可用的 LSP 服务:");
@@ -303,8 +366,16 @@ function addByType(type, name, ctx) {
         }
         return false;
       }
+
+      for (const target of targetDirs) {
+        const { success } = addLspServices(lspFile, target.claudeDir, serviceName);
+        if (!success) {
+          spinner.fail(`同步 LSP 配置到 ${target.dirName} 失败`);
+          return false;
+        }
+      }
       const label = serviceName ? `LSP 服务: ${name}` : "LSP 配置";
-      spinner.succeed(`已添加 ${label} → ${targetPathPrefix}/.lsp.json`);
+      spinner.succeed(`已添加 ${label} → ${formatDestinations(targetDirs, ".lsp.json")}`);
       return true;
     }
 

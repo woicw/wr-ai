@@ -25,7 +25,7 @@ const program = new Command();
 program
   .name("wr-ai")
   .description("一个用于管理 AI 模板的 CLI 工具")
-  .version(packageJson.version);
+  .version(packageJson.version, "-v, --version", "output the version number");
 
 const setCommand = program.command("set").description("设置配置");
 
@@ -46,7 +46,8 @@ const initCommand = program
   .description("初始化配置到当前目录")
   .argument("[type]", "配置类型 (command/skill/agent/hook/mcp/lsp)")
   .option("-a, --all", "初始化所有配置")
-  .option("-g, --global", "保存到用户目录 (~/.claude/)")
+  .option("-g, --global", "保存到用户目录（自动检测 ~/.claude/、~/.codex/ 等）")
+  .option("-p, --platform <platform>", "指定平台目录（如 claude/codex），指定后仅同步该目录")
   .action(handleInit);
 
 program
@@ -59,13 +60,15 @@ program
   .command("add")
   .description("添加指定的配置项（command/skill/agent/hook/mcp/lsp）")
   .argument("<name>", "配置名称，支持 <type>:<name> 格式（如 mcp:server-name）")
-  .option("-g, --global", "保存到用户目录 (~/.claude/)")
+  .option("-g, --global", "保存到用户目录（自动检测 ~/.claude/、~/.codex/ 等）")
+  .option("-p, --platform <platform>", "指定平台目录（如 claude/codex），指定后仅同步该目录")
   .action(handleAdd);
 
 program
   .command("update")
   .description("更新配置")
-  .option("-g, --global", "更新用户目录 (~/.claude/)")
+  .option("-g, --global", "更新用户目录（自动检测 ~/.claude/、~/.codex/ 等）")
+  .option("-p, --platform <platform>", "指定平台目录（如 claude/codex），指定后仅同步该目录")
   .action(handleUpdate);
 
 program

@@ -1,5 +1,5 @@
 import { getOrigin, getPlatform } from '../lib/config.js';
-import { ensureClaudeDir, updateGitignore } from '../lib/filesystem.js';
+import { resolveTargetDirectories, isValidPlatformName, updateGitignore } from '../lib/filesystem.js';
 import { resolveSource } from '../lib/source.js';
 import * as c from 'yoctocolors';
 import ora from 'ora';
@@ -52,76 +52,98 @@ export async function handleUpdate(options = {}) {
     const selected = await selectConfigs(configOptions, '请选择要更新的配置（空格选择，回车确认）:');
 
     const isGlobal = options.global || false;
-    const platform = getPlatform();
-    const claudeDir = ensureClaudeDir(isGlobal, platform);
-    const dirName = `.${platform}`;
+    const fallbackPlatform = getPlatform();
+    if (options.platform && !isValidPlatformName(options.platform)) {
+      log.error('平台名称只能包含字母、数字、连字符和下划线');
+      process.exit(1);
+    }
+    const targetDirs = resolveTargetDirectories({
+      global: isGlobal,
+      platform: options.platform,
+      fallbackPlatform,
+      cwd: process.cwd(),
+    });
+    if (targetDirs.length > 1) {
+      log.info(`检测到多个 AI 配置目录，将同步到: ${targetDirs.map((t) => t.dirName).join(', ')}`);
+    }
 
     // 解析选择结果
     const selection = parseSelection(selected, commands, skills, agents, hooks, mcpServers, lspServices);
 
-    // 检查是否需要确认
-    const confirmMessage = checkNeedConfirm(selection, claudeDir);
+    // 检查是否需要确认（多目录时仅确认一次）
+    let confirmMessage = null;
+    for (const target of targetDirs) {
+      confirmMessage = checkNeedConfirm(selection, target.claudeDir);
+      if (confirmMessage) {
+        break;
+      }
+    }
     if (confirmMessage) {
-      await confirmAction(confirmMessage);
-    }
-
-    const updateSpinner = ora(`正在合并到 ${dirName}/...`).start();
-
-    // 合并文件配置
-    const fileResults = mergeFileConfigs(
-      selection.selectedCommands,
-      selection.selectedSkills,
-      selection.selectedAgents,
-      selection.selectedHooks,
-      { commandsDir, skillsDir, agentsDir, hooksDir },
-      claudeDir,
-      srcBaseDir
-    );
-
-    const { addedItems, updatedItems } = fileResults;
-
-    // 合并 MCP 配置
-    if (selection.selectMcp && hasMcp) {
-      const status = mergeMcpConfig(mcpFile, claudeDir, selection.selectedMcpServers, selection.selectAllMcp, srcBaseDir);
-      if (status === 'updated') {
-        updatedItems.push('.mcp.json');
+      if (targetDirs.length > 1) {
+        await confirmAction(`检测到目标目录中已有本地配置，将执行批量合并（${targetDirs.map((t) => t.dirName).join(', ')}），是否继续？`);
       } else {
-        addedItems.push('.mcp.json');
+        await confirmAction(confirmMessage);
       }
     }
 
-    // 合并 LSP 配置
-    if (selection.selectLsp && hasLsp) {
-      const status = mergeLspConfig(lspFile, claudeDir, selection.selectedLspServices, selection.selectAllLsp, srcBaseDir);
-      if (status === 'updated') {
-        updatedItems.push('.lsp.json');
-      } else {
-        addedItems.push('.lsp.json');
+    for (const target of targetDirs) {
+      const { platform, dirName, claudeDir, targetPathPrefix } = target;
+      const updateSpinner = ora(`正在合并到 ${dirName}/...`).start();
+
+      // 合并文件配置
+      const fileResults = mergeFileConfigs(
+        selection.selectedCommands,
+        selection.selectedSkills,
+        selection.selectedAgents,
+        selection.selectedHooks,
+        { commandsDir, skillsDir, agentsDir, hooksDir },
+        claudeDir,
+        srcBaseDir
+      );
+
+      const { addedItems, updatedItems } = fileResults;
+
+      // 合并 MCP 配置
+      if (selection.selectMcp && hasMcp) {
+        const status = mergeMcpConfig(mcpFile, claudeDir, selection.selectedMcpServers, selection.selectAllMcp, srcBaseDir);
+        if (status === 'updated') {
+          updatedItems.push('.mcp.json');
+        } else {
+          addedItems.push('.mcp.json');
+        }
       }
-    }
 
-    // 输出结果
-    const targetPath = isGlobal ? `~/${dirName}/` : `${dirName}/`;
-    const totalItems = updatedItems.length + addedItems.length;
-    let successMsg = `已合并 ${totalItems} 个项目到 ${targetPath}:\n`;
-    if (addedItems.length > 0) {
-      successMsg += c.green(`  新增: ${addedItems.length} 个\n`);
-    }
-    if (updatedItems.length > 0) {
-      successMsg += c.yellow(`  更新: ${updatedItems.length} 个\n`);
-    }
-    const allItems = [...addedItems, ...updatedItems];
-    if (allItems.length <= MAX_DISPLAY_ITEMS) {
-      successMsg += allItems.map((f) => `  • ${f}`).join('\n');
-    } else {
-      successMsg += allItems.slice(0, MAX_DISPLAY_ITEMS).map((f) => `  • ${f}`).join('\n');
-      successMsg += `\n  ... 还有 ${allItems.length - MAX_DISPLAY_ITEMS} 个`;
-    }
-    updateSpinner.succeed(successMsg);
+      // 合并 LSP 配置
+      if (selection.selectLsp && hasLsp) {
+        const status = mergeLspConfig(lspFile, claudeDir, selection.selectedLspServices, selection.selectAllLsp, srcBaseDir);
+        if (status === 'updated') {
+          updatedItems.push('.lsp.json');
+        } else {
+          addedItems.push('.lsp.json');
+        }
+      }
 
-    // 更新 .gitignore（仅在非全局模式下）
-    if (!isGlobal) {
-      if (updateGitignore(process.cwd(), false, platform)) {
+      // 输出结果
+      const targetPath = `${targetPathPrefix}/`;
+      const totalItems = updatedItems.length + addedItems.length;
+      let successMsg = `已合并 ${totalItems} 个项目到 ${targetPath}:\n`;
+      if (addedItems.length > 0) {
+        successMsg += c.green(`  新增: ${addedItems.length} 个\n`);
+      }
+      if (updatedItems.length > 0) {
+        successMsg += c.yellow(`  更新: ${updatedItems.length} 个\n`);
+      }
+      const allItems = [...addedItems, ...updatedItems];
+      if (allItems.length <= MAX_DISPLAY_ITEMS) {
+        successMsg += allItems.map((f) => `  • ${f}`).join('\n');
+      } else {
+        successMsg += allItems.slice(0, MAX_DISPLAY_ITEMS).map((f) => `  • ${f}`).join('\n');
+        successMsg += `\n  ... 还有 ${allItems.length - MAX_DISPLAY_ITEMS} 个`;
+      }
+      updateSpinner.succeed(successMsg);
+
+      // 更新 .gitignore（仅在非全局模式下）
+      if (!isGlobal && updateGitignore(process.cwd(), false, platform)) {
         log.info(`已添加 .${platform} 到 .gitignore`);
       }
     }

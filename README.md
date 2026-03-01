@@ -42,7 +42,8 @@ wr-ai add mcp:server-name
 
 ### 通用选项
 
-- `-g, --global` — 操作目标改为用户目录 `~/.claude/`（`init` / `add` / `update` / `reset`）
+- `-g, --global` — 操作目标改为用户目录（`init` / `add` / `update` 会自动检测 `~/.claude/`、`~/.codex/` 等已存在目录）
+- `-p, --platform <name>` — 指定平台目录（如 `claude` / `codex`），指定后只同步该目录（`init` / `add` / `update`）
 - `-y, --yes` — 跳过确认提示（`clear` / `reset`）
 - `-a, --all` — 跳过交互直接安装全部（`init`）
 
@@ -70,7 +71,8 @@ wr-ai add mcp                 # 添加所有 MCP 服务器
 wr-ai add mcp:plugin-db       # 添加单个 MCP 服务器
 wr-ai add lsp:python          # 添加单个 LSP 服务
 wr-ai add command:review      # 显式指定类型
-wr-ai add commit -g           # 安装到全局 ~/.claude/
+wr-ai add commit -g           # 安装到全局已存在 AI 目录（如 ~/.claude/、~/.codex/）
+wr-ai add commit --platform codex   # 仅同步到 .codex/（或 ~/.codex/）
 ```
 
 找不到时会列出所有可用项供参考。MCP 配置保存时如果检测到占位符（`${API_KEY}`、`<TOKEN>` 等），会自动提示需要手动配置。
@@ -83,7 +85,8 @@ wr-ai add commit -g           # 安装到全局 ~/.claude/
 wr-ai init              # 先选类型，再选配置
 wr-ai init skill        # 只选 skill
 wr-ai init --all        # 安装全部，跳过交互
-wr-ai init --all -g     # 全部安装到全局
+wr-ai init --all -g     # 全部安装到全局已存在 AI 目录
+wr-ai init --all --platform claude  # 指定只安装到 .claude/
 ```
 
 选择界面示例：
@@ -104,7 +107,7 @@ wr-ai init --all -g     # 全部安装到全局
 
 ### `update`
 
-与 `init` 相同的交互界面，合并模式更新已有配置。
+与 `init` 相同的交互界面，合并模式更新已有配置。默认会同步到当前目录（或 `-g` 的用户目录）下已存在的常用 AI 配置目录；可通过 `--platform` 强制指定单目录。
 
 ### `reset`
 
@@ -175,7 +178,7 @@ ai-config/
 └── .lsp.json
 ```
 
-全局模式（`-g`）输出到 `~/.claude/`。
+默认会优先同步到已存在的常用 AI 目录（如 `.claude/`、`.codex/`，多个目录会同时同步）；若都不存在，则回退到配置中的平台目录（默认 `.claude/`）。全局模式（`-g`）同理在 `~/` 下检测。
 
 ## 配置文件
 
@@ -192,7 +195,7 @@ ai-config/
 
 - **路径验证** — 所有文件操作验证路径，防止路径遍历
 - **原子写入** — MCP / LSP 配置使用 tmp + rename
-- **自动 .gitignore** — 本地模式自动将 `.claude` 添加到 `.gitignore`
+- **自动 .gitignore** — 本地模式自动将同步目标目录（如 `.claude`、`.codex`）加入 `.gitignore`
 
 ## 技术栈
 

@@ -1,5 +1,5 @@
 import { getOrigin, getPlatform } from '../lib/config.js';
-import { ensureClaudeDir, updateGitignore } from '../lib/filesystem.js';
+import { resolveTargetDirectories, isValidPlatformName, updateGitignore } from '../lib/filesystem.js';
 import { resolveSource } from '../lib/source.js';
 import * as c from 'yoctocolors';
 import ora from 'ora';
@@ -30,76 +30,85 @@ async function performMergeAndOutput(params) {
     skillsDir,
     agentsDir,
     hooksDir,
-    claudeDir,
+    targetDirs,
     srcBaseDir,
   } = params;
 
-  // 检查是否需要确认
-  const confirmMessage = checkNeedConfirm(selection, claudeDir);
+  // 检查是否需要确认（多目录时仅确认一次）
+  let confirmMessage = null;
+  for (const target of targetDirs) {
+    confirmMessage = checkNeedConfirm(selection, target.claudeDir);
+    if (confirmMessage) {
+      break;
+    }
+  }
+
   if (confirmMessage) {
-    await confirmAction(confirmMessage);
-  }
-
-  const platform = params.platform || 'claude';
-  const dirName = `.${platform}`;
-  const copySpinner = ora(`正在合并到 ${dirName}/...`).start();
-
-  // 合并文件配置
-  const fileResults = mergeFileConfigs(
-    selection.selectedCommands,
-    selection.selectedSkills,
-    selection.selectedAgents,
-    selection.selectedHooks,
-    { commandsDir, skillsDir, agentsDir, hooksDir },
-    claudeDir,
-    srcBaseDir
-  );
-
-  const { addedItems, updatedItems, copiedItems } = fileResults;
-
-  // 合并 MCP 配置
-  if (selection.selectMcp && hasMcp) {
-    const status = mergeMcpConfig(mcpFile, claudeDir, selection.selectedMcpServers, selection.selectAllMcp, srcBaseDir);
-    if (status === 'updated') {
-      updatedItems.push('.mcp.json');
+    if (targetDirs.length > 1) {
+      await confirmAction(`检测到目标目录中已有本地配置，将执行批量合并（${targetDirs.map((t) => t.dirName).join(', ')}），是否继续？`);
     } else {
-      addedItems.push('.mcp.json');
+      await confirmAction(confirmMessage);
     }
-    copiedItems.push('.mcp.json');
   }
 
-  // 合并 LSP 配置
-  if (selection.selectLsp && hasLsp) {
-    const status = mergeLspConfig(lspFile, claudeDir, selection.selectedLspServices, selection.selectAllLsp, srcBaseDir);
-    if (status === 'updated') {
-      updatedItems.push('.lsp.json');
+  for (const target of targetDirs) {
+    const { platform, dirName, claudeDir, targetPathPrefix } = target;
+    const copySpinner = ora(`正在合并到 ${dirName}/...`).start();
+
+    // 合并文件配置
+    const fileResults = mergeFileConfigs(
+      selection.selectedCommands,
+      selection.selectedSkills,
+      selection.selectedAgents,
+      selection.selectedHooks,
+      { commandsDir, skillsDir, agentsDir, hooksDir },
+      claudeDir,
+      srcBaseDir
+    );
+
+    const { addedItems, updatedItems, copiedItems } = fileResults;
+
+    // 合并 MCP 配置
+    if (selection.selectMcp && hasMcp) {
+      const status = mergeMcpConfig(mcpFile, claudeDir, selection.selectedMcpServers, selection.selectAllMcp, srcBaseDir);
+      if (status === 'updated') {
+        updatedItems.push('.mcp.json');
+      } else {
+        addedItems.push('.mcp.json');
+      }
+      copiedItems.push('.mcp.json');
+    }
+
+    // 合并 LSP 配置
+    if (selection.selectLsp && hasLsp) {
+      const status = mergeLspConfig(lspFile, claudeDir, selection.selectedLspServices, selection.selectAllLsp, srcBaseDir);
+      if (status === 'updated') {
+        updatedItems.push('.lsp.json');
+      } else {
+        addedItems.push('.lsp.json');
+      }
+      copiedItems.push('.lsp.json');
+    }
+
+    // 输出结果
+    const targetPath = `${targetPathPrefix}/`;
+    let successMsg = `已合并 ${copiedItems.length} 个项目到 ${targetPath}:\n`;
+    if (addedItems.length > 0) {
+      successMsg += c.green(`  新增: ${addedItems.length} 个\n`);
+    }
+    if (updatedItems.length > 0) {
+      successMsg += c.yellow(`  更新: ${updatedItems.length} 个\n`);
+    }
+    if (copiedItems.length <= MAX_DISPLAY_ITEMS) {
+      successMsg += copiedItems.map((f) => `  • ${f}`).join('\n');
     } else {
-      addedItems.push('.lsp.json');
+      successMsg += copiedItems.slice(0, MAX_DISPLAY_ITEMS).map((f) => `  • ${f}`).join('\n');
+      successMsg += `\n  ... 还有 ${copiedItems.length - MAX_DISPLAY_ITEMS} 个`;
     }
-    copiedItems.push('.lsp.json');
-  }
+    copySpinner.succeed(successMsg);
 
-  // 输出结果
-  const targetPath = params.global ? `~/${dirName}/` : `${dirName}/`;
-  let successMsg = `已合并 ${copiedItems.length} 个项目到 ${targetPath}:\n`;
-  if (addedItems.length > 0) {
-    successMsg += c.green(`  新增: ${addedItems.length} 个\n`);
-  }
-  if (updatedItems.length > 0) {
-    successMsg += c.yellow(`  更新: ${updatedItems.length} 个\n`);
-  }
-  if (copiedItems.length <= MAX_DISPLAY_ITEMS) {
-    successMsg += copiedItems.map((f) => `  • ${f}`).join('\n');
-  } else {
-    successMsg += copiedItems.slice(0, MAX_DISPLAY_ITEMS).map((f) => `  • ${f}`).join('\n');
-    successMsg += `\n  ... 还有 ${copiedItems.length - MAX_DISPLAY_ITEMS} 个`;
-  }
-  copySpinner.succeed(successMsg);
-
-  // 更新 .gitignore（仅在非全局模式下）
-  if (!params.global) {
-    const cwd = process.cwd();
-    if (updateGitignore(cwd, false, platform)) {
+    // 更新 .gitignore（仅在非全局模式下）
+    if (!params.global && updateGitignore(process.cwd(), false, platform)) {
       log.info(`已添加 .${platform} 到 .gitignore`);
     }
   }
@@ -143,8 +152,20 @@ export async function handleInit(type, options = {}) {
 
     // 确定目标目录（全局模式或当前目录）
     const isGlobal = options.global || false;
-    const platform = getPlatform();
-    const claudeDir = ensureClaudeDir(isGlobal, platform);
+    const fallbackPlatform = getPlatform();
+    if (options.platform && !isValidPlatformName(options.platform)) {
+      log.error('平台名称只能包含字母、数字、连字符和下划线');
+      process.exit(1);
+    }
+    const targetDirs = resolveTargetDirectories({
+      global: isGlobal,
+      platform: options.platform,
+      fallbackPlatform,
+      cwd: process.cwd(),
+    });
+    if (targetDirs.length > 1) {
+      log.info(`检测到多个 AI 配置目录，将同步到: ${targetDirs.map((t) => t.dirName).join(', ')}`);
+    }
 
     // 如果使用了 --all 选项，直接选择所有配置
     if (options.all) {
@@ -171,10 +192,9 @@ export async function handleInit(type, options = {}) {
         skillsDir,
         agentsDir,
         hooksDir,
-        claudeDir,
+        targetDirs,
         srcBaseDir,
         global: isGlobal,
-        platform,
       });
       return;
     }
@@ -231,10 +251,9 @@ export async function handleInit(type, options = {}) {
       skillsDir,
       agentsDir,
       hooksDir,
-      claudeDir,
+      targetDirs,
       srcBaseDir,
       global: isGlobal,
-      platform,
     });
   } catch (error) {
     // 检查是否是用户取消操作（Ctrl+C）
