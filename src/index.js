@@ -9,6 +9,7 @@ import { handleClear } from "./commands/clear.js";
 import { handleAdd } from "./commands/add.js";
 import { handleReset } from "./commands/reset.js";
 import { handleSync } from "./commands/sync.js";
+import { handleUpgrade } from "./commands/upgrade.js";
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
@@ -101,5 +102,10 @@ program
   .option("-g, --global", "保存到用户目录")
   .option("-p, --platform <platform>", "指定平台目录")
   .action(handleAdd);
+
+program
+  .command("upgrade")
+  .description("检查 wr-ai 工具更新")
+  .action(handleUpgrade);
 
 program.parse();
