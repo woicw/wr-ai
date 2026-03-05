@@ -10,6 +10,12 @@ import { readConfigLists, parseSelection } from '../utils/parser.js';
 import { mergeFileConfigs, mergeMcpConfig, mergeLspConfig } from '../utils/merger.js';
 import { handleCancelError } from '../utils/error-handler.js';
 
+/**
+ * 同步上次选择的配置（无需重新选择）
+ * @param {Object} options - 命令选项
+ * @param {boolean} [options.global] - 是否同步全局配置
+ * @param {string} [options.platform] - 指定平台目录
+ */
 export async function handleSync(options = {}) {
   const isGlobal = options.global || false;
 
@@ -67,7 +73,7 @@ export async function handleSync(options = {}) {
 
     if (selected.length === 0) {
       log.warn('上次选择的配置项在远程仓库中已不存在，请重新运行 "wr-ai init" 或 "wr-ai update"');
-      process.exit(0);
+      process.exit(1);
     }
 
     // 显示将要同步的内容
@@ -141,8 +147,13 @@ export async function handleSync(options = {}) {
       }
     }
   } catch (error) {
-    handleCancelError(error, spinner);
-
+    if (error.name === 'CancelError' || error.name === 'ExitPromptError' ||
+        error.message?.includes('SIGINT') || error.message?.includes('cancel') ||
+        error.message?.includes('取消') || error.message?.includes('操作已取消')) {
+      spinner.stop();
+      log.info('操作已取消');
+      process.exit(0);
+    }
     spinner.fail(`同步失败: ${error.message}`);
     if (error.stack) {
       log.error(`错误堆栈: ${error.stack}`);
