@@ -201,7 +201,7 @@ export async function handleAdd(name, options = {}) {
       });
 
       log.info(`最近更新的 ${latestConfigs.length} 个配置:`);
-      latestConfigs.forEach((c) => console.log(`  • ${c}`));
+      latestConfigs.forEach((c) => log.info(`  • ${c}`));
 
       const commandsDir = path.join(sourcePath, 'commands');
       const skillsDir = path.join(sourcePath, 'skills');
