@@ -4,6 +4,7 @@ import { resolveSource } from "../lib/source.js";
 import ora from "ora";
 import fs from "fs";
 import path from "path";
+import { execSync } from "child_process";
 import { log } from "../utils/logger.js";
 import {
   addSingleFileConfig,
@@ -77,6 +78,86 @@ function afterAddTargets(isGlobal, targetDirs) {
   }
 }
 
+/**
+ * 解析 @latest 参数
+ * @param {string} name - 输入名称
+ * @returns {{ isLatest: boolean, count: number }}
+ */
+export function parseLatestArg(name) {
+  if (!name.startsWith('@latest')) {
+    return { isLatest: false, count: 0 };
+  }
+  if (name === '@latest') {
+    return { isLatest: true, count: 1 };
+  }
+  const match = name.match(/^@latest:(\d+)$/);
+  if (match) {
+    const count = Math.max(1, parseInt(match[1], 10));
+    return { isLatest: true, count };
+  }
+  return { isLatest: true, count: 1 };
+}
+
+/**
+ * 获取最近修改的配置文件（基于 git log）
+ * @param {string} repoDir - Git 仓库目录
+ * @param {string} sourcePath - 配置源目录
+ * @param {number} count - 返回数量
+ * @returns {string[]} 最近修改的配置名称列表（格式: type:name）
+ */
+function getLatestConfigs(repoDir, sourcePath, count) {
+  try {
+    const output = execSync(
+      `git log --pretty=format: --name-only --diff-filter=ACMR -n 50`,
+      { cwd: repoDir, encoding: 'utf-8' }
+    );
+
+    const relativeSourcePath = path.relative(repoDir, sourcePath);
+    const seen = new Set();
+    const results = [];
+
+    for (const line of output.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed || !trimmed.startsWith(relativeSourcePath + '/')) continue;
+
+      const relativePath = trimmed.slice(relativeSourcePath.length + 1);
+      const parts = relativePath.split('/');
+      if (parts.length < 2) continue;
+
+      const dir = parts[0];
+      const fileName = parts[1];
+
+      let type, name;
+      if (dir === 'commands' && fileName.endsWith('.md')) {
+        type = 'command';
+        name = fileName.replace('.md', '');
+      } else if (dir === 'skills') {
+        type = 'skill';
+        name = fileName;
+      } else if (dir === 'agents' && fileName.endsWith('.md')) {
+        type = 'agent';
+        name = fileName.replace('.md', '');
+      } else if (dir === 'hooks' && fileName.endsWith('.json')) {
+        type = 'hook';
+        name = fileName.replace('.json', '');
+      } else {
+        continue;
+      }
+
+      const key = `${type}:${name}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      results.push(key);
+
+      if (results.length >= count) break;
+    }
+
+    return results;
+  } catch {
+    return [];
+  }
+}
+
 export async function handleAdd(name, options = {}) {
   if (!name) {
     log.error("请指定要添加的配置名称，格式: <name> 或 <type>:<name>");
@@ -88,6 +169,73 @@ export async function handleAdd(name, options = {}) {
   if (!origin) {
     log.error('请先使用 "wr-ai set github <url>" 设置 GitHub 地址');
     process.exit(1);
+  }
+
+  // 检测 @latest 模式
+  const latestArg = parseLatestArg(name);
+  if (latestArg.isLatest) {
+    const spinner = ora(`正在查找最近更新的 ${latestArg.count} 个配置...`).start();
+
+    try {
+      const { sourcePath, repoDir } = await resolveSource(origin, spinner);
+      spinner.start(`正在查找最近更新的配置...`);
+
+      const latestConfigs = getLatestConfigs(repoDir, sourcePath, latestArg.count);
+
+      if (latestConfigs.length === 0) {
+        spinner.fail('未找到最近更新的配置');
+        process.exit(1);
+      }
+
+      const isGlobal = options.global || false;
+      const fallbackPlatform = getPlatform();
+      if (options.platform && !isValidPlatformName(options.platform)) {
+        log.error('平台名称只能包含字母、数字、连字符和下划线');
+        process.exit(1);
+      }
+      const targetDirs = resolveTargetDirectories({
+        global: isGlobal,
+        platform: options.platform,
+        fallbackPlatform,
+        cwd: process.cwd(),
+      });
+
+      log.info(`最近更新的 ${latestConfigs.length} 个配置:`);
+      latestConfigs.forEach((c) => console.log(`  • ${c}`));
+
+      const commandsDir = path.join(sourcePath, 'commands');
+      const skillsDir = path.join(sourcePath, 'skills');
+      const agentsDir = path.join(sourcePath, 'agents');
+      const hooksDir = path.join(sourcePath, 'hooks');
+      const mcpFile = path.join(sourcePath, '.mcp.json');
+      const lspFile = path.join(sourcePath, '.lsp.json');
+      const { keys: mcpServers } = readJsonConfig(mcpFile, 'mcpServers');
+      const { keys: lspServices } = readJsonConfig(lspFile);
+
+      let allSuccess = true;
+      for (const config of latestConfigs) {
+        const [configType, configName] = config.split(':');
+        const result = addByType(configType, configName, {
+          commandsDir, skillsDir, agentsDir, hooksDir, mcpFile, lspFile,
+          targetDirs, spinner, mcpServers, lspServices,
+        });
+        if (!result) allSuccess = false;
+      }
+
+      if (allSuccess) {
+        afterAddTargets(isGlobal, targetDirs);
+      }
+      return;
+    } catch (error) {
+      if (error.name === 'CancelError' || error.name === 'ExitPromptError' ||
+          error.message?.includes('SIGINT') || error.message?.includes('cancel')) {
+        spinner.stop();
+        log.info('操作已取消');
+        process.exit(0);
+      }
+      spinner.fail(`添加失败: ${error.message}`);
+      process.exit(1);
+    }
   }
 
   // 解析类型和名称
