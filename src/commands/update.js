@@ -1,4 +1,4 @@
-import { getOrigin, getPlatform } from '../lib/config.js';
+import { getOrigin, getPlatform, saveLastSelection } from '../lib/config.js';
 import { resolveTargetDirectories, isValidPlatformName, updateGitignore } from '../lib/filesystem.js';
 import { resolveSource } from '../lib/source.js';
 import * as c from 'yoctocolors';
@@ -148,6 +148,16 @@ export async function handleUpdate(options = {}) {
         log.info(`已添加 .${platform} 到 .gitignore`);
       }
     }
+
+    // 保存选择
+    saveLastSelection({
+      commands: selection.selectedCommands,
+      skills: selection.selectedSkills,
+      agents: selection.selectedAgents,
+      hooks: selection.selectedHooks,
+      mcpServers: selection.selectedMcpServers,
+      lspServices: selection.selectedLspServices,
+    }, isGlobal);
   } catch (error) {
     handleCancelError(error, spinner);
 
