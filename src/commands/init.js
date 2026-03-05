@@ -8,6 +8,7 @@ import { log } from '../utils/logger.js';
 import { readConfigLists, parseSelection } from '../utils/parser.js';
 import { buildOptions, selectConfigs, confirmAction, selectType, filterOptionsByType } from '../utils/prompts.js';
 import { mergeFileConfigs, mergeMcpConfig, mergeLspConfig, checkNeedConfirm } from '../utils/merger.js';
+import { handleCancelError } from '../utils/error-handler.js';
 
 /**
  * 执行配置合并和输出结果
@@ -256,16 +257,7 @@ export async function handleInit(type, options = {}) {
       global: isGlobal,
     });
   } catch (error) {
-    // 检查是否是用户取消操作（Ctrl+C）
-    if (error.name === 'ExitPromptError' ||
-      error.name === 'CancelError' ||
-      error.message?.includes('SIGINT') ||
-      error.message?.includes('cancel') ||
-      error.message?.includes('取消')) {
-      spinner.stop();
-      log.info('操作:初始化配置已取消，退出程序');
-      process.exit(0);
-    }
+    handleCancelError(error, spinner);
 
     spinner.fail(`初始化失败: ${error.message}`);
     if (error.stack) {

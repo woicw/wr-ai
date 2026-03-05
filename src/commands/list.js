@@ -5,6 +5,7 @@ import ora from "ora";
 import { VALID_TYPES, normalizeType } from "../utils/constants.js";
 import { log } from "../utils/logger.js";
 import { readConfigLists } from "../utils/parser.js";
+import { handleCancelError } from "../utils/error-handler.js";
 
 export async function handleList(type) {
   const origin = getOrigin();
@@ -94,17 +95,7 @@ export async function handleList(type) {
     console.log();
 
   } catch (error) {
-    // 检查是否是用户取消操作（Ctrl+C）
-    if (error.name === 'CancelError' ||
-        error.name === 'ExitPromptError' ||
-        error.message?.includes('SIGINT') ||
-        error.message?.includes('cancel') ||
-        error.message?.includes('取消') ||
-        error.message?.includes('操作已取消')) {
-      spinner.stop();
-      log.info('操作已取消');
-      process.exit(0);
-    }
+    handleCancelError(error, spinner);
 
     spinner.fail(`获取配置列表失败: ${error.message}`);
     process.exit(1);

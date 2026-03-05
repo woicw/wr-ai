@@ -2,6 +2,7 @@ import { select, checkbox } from '@inquirer/prompts';
 import * as c from 'yoctocolors';
 import { OPTION_VALUES } from './constants.js';
 import { log } from './logger.js';
+import { handleCancelError } from './error-handler.js';
 
 // 构建选项列表
 export function buildOptions(commands, skills, agents, hooks, mcpServers, lspServices, hasMcp, hasLsp, actionText) {
@@ -159,11 +160,7 @@ export async function selectConfigs(options, message) {
         process.exit(0);
       }
     } catch (error) {
-      // 区分取消操作和真正的错误
-      if (error.name === 'CancelError' || error.message?.includes('cancel') || error.message?.includes('取消')) {
-        log.info('已取消');
-        process.exit(0);
-      }
+      handleCancelError(error, null);
       // 重新抛出真正的错误
       throw error;
     }

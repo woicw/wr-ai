@@ -6,6 +6,29 @@ import { log } from './logger.js';
 import * as c from 'yoctocolors';
 
 /**
+ * 原子性写入 JSON 文件
+ * @param {string} destPath - 目标文件路径
+ * @param {Object} content - 要写入的内容
+ */
+function atomicWriteJson(destPath, content) {
+  const tempPath = destPath + '.tmp';
+  try {
+    fs.writeFileSync(tempPath, JSON.stringify(content, null, 2) + '\n');
+    fs.renameSync(tempPath, destPath);
+  } catch (error) {
+    // 如果写入失败，尝试清理临时文件
+    if (fs.existsSync(tempPath)) {
+      try {
+        fs.unlinkSync(tempPath);
+      } catch (e) {
+        // 忽略清理错误
+      }
+    }
+    throw error;
+  }
+}
+
+/**
  * 检查 MCP 配置是否需要手动配置 key/token
  * @param {Object} mcpConfig - MCP 配置对象
  * @returns {Array} 需要配置的服务器列表
@@ -301,22 +324,8 @@ export function mergeMcpConfig(
     },
   };
 
-  // 原子性写入：先写入临时文件，然后重命名
-  const tempPath = destPath + '.tmp';
-  try {
-    fs.writeFileSync(tempPath, JSON.stringify(mergedConfig, null, 2) + '\n');
-    fs.renameSync(tempPath, destPath);
-  } catch (error) {
-    // 如果写入失败，尝试清理临时文件
-    if (fs.existsSync(tempPath)) {
-      try {
-        fs.unlinkSync(tempPath);
-      } catch (e) {
-        // 忽略清理错误
-      }
-    }
-    throw error;
-  }
+  // 原子性写入
+  atomicWriteJson(destPath, mergedConfig);
 
   // 检查是否需要手动配置 key/token
   const serversNeedingSetup = checkMcpConfigNeedsSetup(mergedConfig);
@@ -372,22 +381,8 @@ export function mergeLspConfig(
     ...servicesToMerge,
   };
 
-  // 原子性写入：先写入临时文件，然后重命名
-  const tempPath = destPath + '.tmp';
-  try {
-    fs.writeFileSync(tempPath, JSON.stringify(mergedConfig, null, 2) + '\n');
-    fs.renameSync(tempPath, destPath);
-  } catch (error) {
-    // 如果写入失败，尝试清理临时文件
-    if (fs.existsSync(tempPath)) {
-      try {
-        fs.unlinkSync(tempPath);
-      } catch (e) {
-        // 忽略清理错误
-      }
-    }
-    throw error;
-  }
+  // 原子性写入
+  atomicWriteJson(destPath, mergedConfig);
 
   return exists ? 'updated' : 'added';
 }
