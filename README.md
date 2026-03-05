@@ -33,8 +33,11 @@ wr-ai add mcp:server-name
 |------|------|
 | `wr-ai list [type]` | 列出远程可用配置 |
 | `wr-ai add <name>` | 添加单个配置项 |
+| `wr-ai install <name>` | 安装配置（`add` 的别名） |
 | `wr-ai init [type]` | 交互式批量选择安装 |
 | `wr-ai update` | 交互式更新已有配置 |
+| `wr-ai sync` | 同步上次选择的配置（无需重新选择） |
+| `wr-ai upgrade` | 检查 wr-ai 工具更新 |
 | `wr-ai reset <target>` | 重置指定文件夹或文件 |
 | `wr-ai set github <url>` | 设置 GitHub 仓库地址 |
 | `wr-ai set platform <name>` | 设置平台目录名（默认 `claude`） |
@@ -42,10 +45,13 @@ wr-ai add mcp:server-name
 
 ### 通用选项
 
-- `-g, --global` — 操作目标改为用户目录（`init` / `add` / `update` 会自动检测 `~/.claude/`、`~/.codex/` 等已存在目录）
-- `-p, --platform <name>` — 指定平台目录（如 `claude` / `codex`），指定后只同步该目录（`init` / `add` / `update`）
+- `-g, --global` — 操作目标改为用户目录（`init` / `add` / `update` / `sync` 会自动检测 `~/.claude/`、`~/.codex/` 等已存在目录）
+- `-p, --platform <name>` — 指定平台目录（如 `claude` / `codex`），指定后只同步该目录（`init` / `add` / `update` / `sync`）
 - `-y, --yes` — 跳过确认提示（`clear` / `reset`）
 - `-a, --all` — 跳过交互直接安装全部（`init`）
+- `-r, --recommended` — 安装推荐配置（commands 和 skills）（`init`）
+- `-e, --exclude <types>` — 排除指定类型，逗号分隔（如 `mcp,lsp`）（`init --all`）
+- `-l, --last` — 使用上次选择（等同于 `sync`）（`update`）
 
 ## 命令详解
 
@@ -67,6 +73,8 @@ wr-ai list mcp      # 仅 MCP 服务器
 
 ```bash
 wr-ai add commit              # 自动匹配 command/skill/agent/hook
+wr-ai add @latest             # 添加最近更新的 1 个配置
+wr-ai add @latest:5           # 添加最近更新的 5 个配置
 wr-ai add mcp                 # 添加所有 MCP 服务器
 wr-ai add mcp:plugin-db       # 添加单个 MCP 服务器
 wr-ai add lsp:python          # 添加单个 LSP 服务
@@ -77,15 +85,26 @@ wr-ai add commit --platform codex   # 仅同步到 .codex/（或 ~/.codex/）
 
 找不到时会列出所有可用项供参考。MCP 配置保存时如果检测到占位符（`${API_KEY}`、`<TOKEN>` 等），会自动提示需要手动配置。
 
+### `install`
+
+`add` 命令的别名，用法完全相同：
+
+```bash
+wr-ai install code-review     # 等同于 wr-ai add code-review
+wr-ai install @latest         # 等同于 wr-ai add @latest
+```
+
 ### `init`
 
 交互式多选安装，支持按类型过滤和全量安装：
 
 ```bash
-wr-ai init              # 先选类型，再选配置
-wr-ai init skill        # 只选 skill
-wr-ai init --all        # 安装全部，跳过交互
-wr-ai init --all -g     # 全部安装到全局已存在 AI 目录
+wr-ai init                    # 先选类型，再选配置
+wr-ai init skill              # 只选 skill
+wr-ai init --all              # 安装全部，跳过交互
+wr-ai init --recommended      # 安装推荐配置（commands 和 skills）
+wr-ai init --all --exclude mcp,lsp  # 安装全部但排除 MCP 和 LSP
+wr-ai init --all -g           # 全部安装到全局已存在 AI 目录
 wr-ai init --all --platform claude  # 指定只安装到 .claude/
 ```
 
@@ -108,6 +127,32 @@ wr-ai init --all --platform claude  # 指定只安装到 .claude/
 ### `update`
 
 与 `init` 相同的交互界面，合并模式更新已有配置。默认会同步到当前目录（或 `-g` 的用户目录）下已存在的常用 AI 配置目录；可通过 `--platform` 强制指定单目录。
+
+```bash
+wr-ai update              # 交互式选择要更新的配置
+wr-ai update --last       # 使用上次选择，无需重新选择（等同于 sync）
+wr-ai update -g           # 更新全局配置
+```
+
+### `sync`
+
+快速同步上次选择的配置，无需重新选择。适合日常更新场景：
+
+```bash
+wr-ai sync                # 同步本地配置（使用上次选择）
+wr-ai sync -g             # 同步全局配置
+wr-ai sync --platform claude  # 同步到指定平台
+```
+
+工具会自动记住你上次通过 `init` 或 `update` 选择的配置项，`sync` 命令会直接重新应用这些选择。
+
+### `upgrade`
+
+检查 wr-ai 工具是否有新版本：
+
+```bash
+wr-ai upgrade             # 检查更新并显示安装指令
+```
 
 ### `reset`
 
@@ -187,9 +232,36 @@ ai-config/
 ```json
 {
   "origin": "https://github.com/woicw/ai-config.git",
-  "platform": "claude"
+  "platform": "claude",
+  "lastSelection": {
+    "commands": ["commit", "review"],
+    "skills": ["code-review"],
+    "agents": [],
+    "hooks": [],
+    "mcpServers": [],
+    "lspServices": [],
+    "timestamp": "2026-03-05T12:00:00Z"
+  }
 }
 ```
+
+本地项目配置 `<项目>/.wr-ai/config.json`：
+
+```json
+{
+  "lastSelection": {
+    "commands": ["deploy"],
+    "skills": ["frontend-design"],
+    "agents": [],
+    "hooks": [],
+    "mcpServers": [],
+    "lspServices": [],
+    "timestamp": "2026-03-05T12:00:00Z"
+  }
+}
+```
+
+`lastSelection` 字段会在执行 `init` 或 `update` 命令后自动保存，用于 `sync` 命令快速重新应用。
 
 ## 安全
 
@@ -224,9 +296,11 @@ src/
 │   ├── list.js
 │   ├── reset.js
 │   ├── set.js
-│   └── update.js
+│   ├── sync.js           # 同步命令
+│   ├── update.js
+│   └── upgrade.js        # 更新检查
 ├── lib/                  # 核心库
-│   ├── config.js         # 配置管理
+│   ├── config.js         # 配置管理（含 lastSelection）
 │   ├── filesystem.js     # 文件系统操作
 │   ├── repository.js     # Git 仓库操作
 │   └── source.js         # 配置源解析
