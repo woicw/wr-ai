@@ -11,6 +11,12 @@ import { mergeFileConfigs, mergeMcpConfig, mergeLspConfig, checkNeedConfirm } fr
 import { handleCancelError } from '../utils/error-handler.js';
 
 export async function handleUpdate(options = {}) {
+  // 如果指定了 --last，委托给 sync 的逻辑
+  if (options.last) {
+    const { handleSync } = await import('./sync.js');
+    return handleSync(options);
+  }
+
   const origin = getOrigin();
   if (!origin) {
     log.error('请先使用 "wr-ai set github <url>" 设置 GitHub 地址');

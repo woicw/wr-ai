@@ -73,6 +73,7 @@ program
   .description("更新配置")
   .option("-g, --global", "更新用户目录（自动检测 ~/.claude/、~/.codex/ 等）")
   .option("-p, --platform <platform>", "指定平台目录（如 claude/codex），指定后仅同步该目录")
+  .option("-l, --last", "使用上次选择（等同于 sync）")
   .action(handleUpdate);
 
 program
