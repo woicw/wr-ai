@@ -14,7 +14,10 @@ export function getConfig() {
   try {
     const content = fs.readFileSync(CONFIG_FILE, "utf-8");
     const config = JSON.parse(content);
-    // 确保 platform 有默认值
+    // 确保 origin 和 platform 有默认值
+    if (!config.origin) {
+      config.origin = DEFAULT_ORIGIN;
+    }
     if (!config.platform) {
       config.platform = DEFAULT_PLATFORM;
     }
