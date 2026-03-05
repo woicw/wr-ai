@@ -93,4 +93,11 @@ program
   .option("-p, --platform <platform>", "指定平台目录")
   .action(handleSync);
 
+program
+  .command("install <name>")
+  .description("安装配置（add 的别名）")
+  .option("-g, --global", "保存到用户目录")
+  .option("-p, --platform <platform>", "指定平台目录")
+  .action(handleAdd);
+
 program.parse();
