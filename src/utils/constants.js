@@ -49,3 +49,6 @@ export function normalizeType(type) {
   const lower = type.toLowerCase();
   return TYPE_ALIASES[lower] || lower;
 }
+
+// 推荐安装的配置类型（排除复杂的 mcp/lsp）
+export const RECOMMENDED_TYPES = ['command', 'skill'];

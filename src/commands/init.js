@@ -211,6 +211,41 @@ export async function handleInit(type, options = {}) {
       return;
     }
 
+    // 如果使用了 --recommended 选项
+    if (options.recommended) {
+      const selected = [];
+      if (commands.length > 0) selected.push(OPTION_VALUES.ALL_COMMANDS);
+      if (skills.length > 0) selected.push(OPTION_VALUES.ALL_SKILLS);
+
+      if (selected.length === 0) {
+        log.warn('未找到推荐的配置类型');
+        process.exit(0);
+      }
+
+      const selection = parseSelection(selected, commands, skills, agents, hooks, mcpServers, lspServices);
+
+      await performMergeAndOutput({
+        selection,
+        commands, skills, agents, hooks,
+        mcpServers, lspServices,
+        hasMcp, hasLsp,
+        mcpFile, lspFile,
+        commandsDir, skillsDir, agentsDir, hooksDir,
+        targetDirs, srcBaseDir,
+        global: isGlobal,
+      });
+
+      saveLastSelection({
+        commands: selection.selectedCommands,
+        skills: selection.selectedSkills,
+        agents: selection.selectedAgents,
+        hooks: selection.selectedHooks,
+        mcpServers: selection.selectedMcpServers,
+        lspServices: selection.selectedLspServices,
+      }, isGlobal);
+      return;
+    }
+
     // 如果未指定类型，让用户选择类型
     let selectedType = type ? normalizeType(type) : null;
     if (!selectedType) {

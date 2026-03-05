@@ -47,6 +47,7 @@ const initCommand = program
   .description("初始化配置到当前目录")
   .argument("[type]", "配置类型 (command/skill/agent/hook/mcp/lsp)")
   .option("-a, --all", "初始化所有配置")
+  .option("-r, --recommended", "安装推荐配置（commands 和 skills）")
   .option("-g, --global", "保存到用户目录（自动检测 ~/.claude/、~/.codex/ 等）")
   .option("-p, --platform <platform>", "指定平台目录（如 claude/codex），指定后仅同步该目录")
   .action(handleInit);
