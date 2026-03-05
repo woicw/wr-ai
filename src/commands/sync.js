@@ -153,11 +153,12 @@ export async function handleSync(options = {}) {
       spinner.stop();
       log.info('操作已取消');
       process.exit(0);
+    } else {
+      spinner.fail(`同步失败: ${error.message}`);
+      if (error.stack) {
+        log.error(`错误堆栈: ${error.stack}`);
+      }
+      process.exit(1);
     }
-    spinner.fail(`同步失败: ${error.message}`);
-    if (error.stack) {
-      log.error(`错误堆栈: ${error.stack}`);
-    }
-    process.exit(1);
   }
 }
