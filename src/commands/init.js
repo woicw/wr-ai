@@ -170,35 +170,33 @@ export async function handleInit(type, options = {}) {
 
     // 如果使用了 --all 选项，直接选择所有配置
     if (options.all) {
-      // 直接选择 ALL 选项
-      const selected = [OPTION_VALUES.ALL];
+      let selected = [OPTION_VALUES.ALL];
 
-      // 解析选择结果
+      // 处理排除选项
+      if (options.exclude) {
+        const excludeTypes = options.exclude.split(',').map((t) => normalizeType(t.trim()));
+        selected = [];
+        if (!excludeTypes.includes('command') && commands.length > 0) selected.push(OPTION_VALUES.ALL_COMMANDS);
+        if (!excludeTypes.includes('skill') && skills.length > 0) selected.push(OPTION_VALUES.ALL_SKILLS);
+        if (!excludeTypes.includes('agent') && agents.length > 0) selected.push(OPTION_VALUES.ALL_AGENTS);
+        if (!excludeTypes.includes('hook') && hooks.length > 0) selected.push(OPTION_VALUES.ALL_HOOKS);
+        if (!excludeTypes.includes('mcp') && hasMcp) selected.push(OPTION_VALUES.ALL_MCP);
+        if (!excludeTypes.includes('lsp') && hasLsp) selected.push(OPTION_VALUES.ALL_LSP);
+      }
+
       const selection = parseSelection(selected, commands, skills, agents, hooks, mcpServers, lspServices);
 
-      // 执行合并和输出
       await performMergeAndOutput({
         selection,
-        commands,
-        skills,
-        agents,
-        hooks,
-        mcpServers,
-        lspServices,
-        hasMcp,
-        hasLsp,
-        mcpFile,
-        lspFile,
-        commandsDir,
-        skillsDir,
-        agentsDir,
-        hooksDir,
-        targetDirs,
-        srcBaseDir,
+        commands, skills, agents, hooks,
+        mcpServers, lspServices,
+        hasMcp, hasLsp,
+        mcpFile, lspFile,
+        commandsDir, skillsDir, agentsDir, hooksDir,
+        targetDirs, srcBaseDir,
         global: isGlobal,
       });
 
-      // 保存选择
       saveLastSelection({
         commands: selection.selectedCommands,
         skills: selection.selectedSkills,
@@ -207,7 +205,6 @@ export async function handleInit(type, options = {}) {
         mcpServers: selection.selectedMcpServers,
         lspServices: selection.selectedLspServices,
       }, isGlobal);
-
       return;
     }
 
