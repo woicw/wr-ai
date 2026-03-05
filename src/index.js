@@ -8,6 +8,7 @@ import { handleUpdate } from "./commands/update.js";
 import { handleClear } from "./commands/clear.js";
 import { handleAdd } from "./commands/add.js";
 import { handleReset } from "./commands/reset.js";
+import { handleSync } from "./commands/sync.js";
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
@@ -84,5 +85,12 @@ program
   .option("-g, --global", "重置用户目录 (~/.claude/) 下的文件")
   .option("-y, --yes", "跳过确认提示")
   .action(handleReset);
+
+program
+  .command("sync")
+  .description("同步上次选择的配置（无需重新选择）")
+  .option("-g, --global", "同步全局配置")
+  .option("-p, --platform <platform>", "指定平台目录")
+  .action(handleSync);
 
 program.parse();
