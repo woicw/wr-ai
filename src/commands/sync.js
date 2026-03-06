@@ -17,14 +17,23 @@ import { handleCancelError } from '../utils/error-handler.js';
  * @param {string} [options.platform] - 指定平台目录
  */
 export async function handleSync(options = {}) {
-  const isGlobal = options.global || false;
+  let isGlobal = options.global || false;
 
-  // 读取上次保存的选择
-  const lastSelection = getLastSelection(isGlobal);
+  // 读取上次保存的选择，如果本地没有则尝试全局
+  let lastSelection = getLastSelection(isGlobal);
+  if (!lastSelection && !isGlobal) {
+    // 本地没有找到，尝试全局配置
+    lastSelection = getLastSelection(true);
+    if (lastSelection) {
+      isGlobal = true;
+      log.info('本地未找到配置，使用全局配置');
+    }
+  }
+
   if (!lastSelection) {
     log.error(isGlobal
       ? '未找到全局配置的历史选择，请先运行 "wr-ai init -g" 或 "wr-ai update -g"'
-      : '未找到本地配置的历史选择，请先运行 "wr-ai init" 或 "wr-ai update"');
+      : '未找到本地或全局配置的历史选择，请先运行 "wr-ai init" 或 "wr-ai update"');
     process.exit(1);
   }
 
