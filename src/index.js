@@ -1,15 +1,10 @@
 #!/usr/bin/env node
 
 import { Command } from "commander";
-import { handleSet, handleSetPlatform } from "./commands/set.js";
-import { handleInit } from "./commands/init.js";
+import { handleSet } from "./commands/set.js";
 import { handleList } from "./commands/list.js";
-import { handleUpdate } from "./commands/update.js";
-import { handleClear } from "./commands/clear.js";
 import { handleAdd } from "./commands/add.js";
-import { handleReset } from "./commands/reset.js";
 import { handleSync } from "./commands/sync.js";
-import { handleUpgrade } from "./commands/upgrade.js";
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
@@ -25,11 +20,11 @@ const packageJson = JSON.parse(
 const program = new Command();
 
 program
-  .name("wr-ai")
-  .description("一个用于管理 AI 模板的 CLI 工具")
+  .name("wrs")
+  .description("一个用于管理 wrs 技能配置的 CLI 工具")
   .version(packageJson.version, "-v, --version", "output the version number");
 
-const setCommand = program.command("set").description("设置配置");
+const setCommand = program.command("set").description("设置 wrs 配置");
 
 setCommand
   .command("github")
@@ -37,76 +32,24 @@ setCommand
   .argument("<url>", "GitHub 仓库地址")
   .action(handleSet);
 
-setCommand
-  .command("platform")
-  .description("设置平台名称（目录名）")
-  .argument("<platform>", "平台名称（如 claude，将保存在 .claude/ 目录）")
-  .action(handleSetPlatform);
-
-const initCommand = program
-  .command("init")
-  .description("初始化配置到当前目录")
-  .argument("[type]", "配置类型 (command/skill/agent/hook/mcp/lsp)")
-  .option("-a, --all", "初始化所有配置")
-  .option("-r, --recommended", "安装推荐配置（commands 和 skills）")
-  .option("-e, --exclude <types>", "排除指定类型（逗号分隔，如 mcp,lsp）")
-  .option("-g, --global", "保存到用户目录（自动检测 ~/.claude/、~/.codex/ 等）")
-  .option("-p, --platform <platform>", "指定平台目录（如 claude/codex），指定后仅同步该目录")
-  .action(handleInit);
-
 program
   .command("list")
-  .description("列出所有可用配置")
-  .argument("[type]", "配置类型 (command/skill/agent/hook/mcp/lsp)")
+  .description("列出所有可用技能")
   .action(handleList);
 
 program
   .command("add")
-  .description("添加指定的配置项（command/skill/agent/hook/mcp/lsp）")
-  .argument("<name>", "配置名称，支持 <type>:<name> 格式（如 mcp:server-name）")
+  .description("添加指定技能")
+  .argument("<name>", "技能名称")
   .option("-g, --global", "保存到用户目录（自动检测 ~/.claude/、~/.codex/ 等）")
   .option("-p, --platform <platform>", "指定平台目录（如 claude/codex），指定后仅同步该目录")
   .action(handleAdd);
 
 program
-  .command("update")
-  .description("更新配置")
-  .option("-g, --global", "更新用户目录（自动检测 ~/.claude/、~/.codex/ 等）")
-  .option("-p, --platform <platform>", "指定平台目录（如 claude/codex），指定后仅同步该目录")
-  .option("-l, --last", "使用上次选择（等同于 sync）")
-  .action(handleUpdate);
-
-program
-  .command("clear")
-  .description("删除 .wr-ai 文件夹（包括配置和模板）")
-  .option("-y, --yes", "跳过确认提示")
-  .action(handleClear);
-
-program
-  .command("reset")
-  .description("重置指定的文件夹或文件")
-  .argument("<target>", "文件夹名（commands/skills/agents/hooks）或文件名（.mcp.json/.lsp.json）")
-  .option("-g, --global", "重置用户目录 (~/.claude/) 下的文件")
-  .option("-y, --yes", "跳过确认提示")
-  .action(handleReset);
-
-program
   .command("sync")
-  .description("同步上次选择的配置（无需重新选择）")
+  .description("同步上次选择的技能")
   .option("-g, --global", "同步全局配置")
   .option("-p, --platform <platform>", "指定平台目录")
   .action(handleSync);
-
-program
-  .command("install <name>")
-  .description("安装配置（add 的别名）")
-  .option("-g, --global", "保存到用户目录")
-  .option("-p, --platform <platform>", "指定平台目录")
-  .action(handleAdd);
-
-program
-  .command("upgrade")
-  .description("检查 wr-ai 工具更新")
-  .action(handleUpgrade);
 
 program.parse();

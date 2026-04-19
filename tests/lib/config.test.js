@@ -16,99 +16,47 @@ function cleanupTempDir(dir) {
   }
 }
 
-test('getLocalConfigPath - 返回项目本地配置路径', async (t) => {
+test('getLocalConfigPath - 返回项目本地配置路径', async () => {
   const { getLocalConfigPath } = await import('../../src/lib/config.js');
   const result = getLocalConfigPath('/test/project');
-  assert.strictEqual(result, path.join('/test/project', '.wr-ai', 'config.json'));
+  assert.strictEqual(result, path.join('/test/project', '.wrs', 'config.json'));
 });
 
-test('saveLastSelection + getLastSelection - 全局配置往返', async (t) => {
+test('saveLastSelection + getLastSelection - 全局配置往返', async () => {
   const { saveLastSelection, getLastSelection } = await import('../../src/lib/config.js');
   const tempDir = createTempDir();
 
   try {
-    const selection = {
-      commands: ['commit', 'review'],
-      skills: ['code-review'],
-      agents: [],
-      hooks: [],
-      mcpServers: ['plugin-db'],
-      lspServices: [],
-    };
-
-    saveLastSelection(selection, true, tempDir);
-
-    const configPath = path.join(tempDir, '.wr-ai', 'config.json');
+    saveLastSelection({ skills: ['code-review', 'nextjs'] }, true, tempDir);
+    const configPath = path.join(tempDir, '.wrs', 'config.json');
     assert.strictEqual(fs.existsSync(configPath), true);
 
     const result = getLastSelection(true, tempDir);
-    assert.deepStrictEqual(result.commands, ['commit', 'review']);
-    assert.deepStrictEqual(result.skills, ['code-review']);
-    assert.deepStrictEqual(result.mcpServers, ['plugin-db']);
+    assert.deepStrictEqual(result.skills, ['code-review', 'nextjs']);
     assert.ok(result.timestamp);
   } finally {
     cleanupTempDir(tempDir);
   }
 });
 
-test('saveLastSelection + getLastSelection - 本地配置往返', async (t) => {
-  const { saveLastSelection, getLastSelection } = await import('../../src/lib/config.js');
-  const tempDir = createTempDir();
-
-  try {
-    const selection = {
-      commands: ['deploy'],
-      skills: ['frontend-design'],
-      agents: ['test-runner'],
-      hooks: [],
-      mcpServers: [],
-      lspServices: ['typescript'],
-    };
-
-    saveLastSelection(selection, false, tempDir);
-
-    const configPath = path.join(tempDir, '.wr-ai', 'config.json');
-    assert.strictEqual(fs.existsSync(configPath), true);
-
-    const result = getLastSelection(false, tempDir);
-    assert.deepStrictEqual(result.commands, ['deploy']);
-    assert.deepStrictEqual(result.agents, ['test-runner']);
-    assert.deepStrictEqual(result.lspServices, ['typescript']);
-  } finally {
-    cleanupTempDir(tempDir);
-  }
-});
-
-test('getLastSelection - 无配置文件时返回 null', async (t) => {
-  const { getLastSelection } = await import('../../src/lib/config.js');
-  const tempDir = createTempDir();
-
-  try {
-    const result = getLastSelection(false, tempDir);
-    assert.strictEqual(result, null);
-  } finally {
-    cleanupTempDir(tempDir);
-  }
-});
-
-test('saveLastSelection - 保留已有配置字段', async (t) => {
+test('saveLastSelection - 保留已有 origin/platform 字段', async () => {
   const { saveLastSelection } = await import('../../src/lib/config.js');
   const tempDir = createTempDir();
 
   try {
-    const configDir = path.join(tempDir, '.wr-ai');
+    const configDir = path.join(tempDir, '.wrs');
     fs.mkdirSync(configDir, { recursive: true });
     fs.writeFileSync(
       path.join(configDir, 'config.json'),
       JSON.stringify({ origin: 'https://github.com/test/repo.git', platform: 'claude' }, null, 2)
     );
 
-    saveLastSelection({ commands: ['x'], skills: [], agents: [], hooks: [], mcpServers: [], lspServices: [] }, true, tempDir);
+    saveLastSelection({ skills: ['code-review'] }, true, tempDir);
 
     const config = JSON.parse(fs.readFileSync(path.join(configDir, 'config.json'), 'utf-8'));
     assert.strictEqual(config.origin, 'https://github.com/test/repo.git');
     assert.strictEqual(config.platform, 'claude');
-    assert.deepStrictEqual(config.lastSelection.commands, ['x']);
+    assert.deepStrictEqual(config.lastSelection.skills, ['code-review']);
   } finally {
     cleanupTempDir(tempDir);
   }

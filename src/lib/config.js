@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 
-const CONFIG_DIR = path.join(os.homedir(), ".wr-ai");
+const CONFIG_DIR = path.join(os.homedir(), ".wrs");
 const CONFIG_FILE = path.join(CONFIG_DIR, "config.json");
 const DEFAULT_ORIGIN = "https://github.com/woicw/ai-config.git";
 const DEFAULT_PLATFORM = "claude";
@@ -42,16 +42,6 @@ export function getOrigin() {
   return config.origin;
 }
 
-export function setPlatform(platform) {
-  if (!fs.existsSync(CONFIG_DIR)) {
-    fs.mkdirSync(CONFIG_DIR, { recursive: true });
-  }
-  const currentConfig = getConfig();
-  const config = { ...currentConfig, platform };
-  fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
-  return config;
-}
-
 export function getPlatform() {
   const config = getConfig();
   return config.platform || DEFAULT_PLATFORM;
@@ -63,7 +53,7 @@ export function getPlatform() {
  * @returns {string} 本地配置文件路径
  */
 export function getLocalConfigPath(cwd) {
-  return path.join(cwd, '.wr-ai', 'config.json');
+  return path.join(cwd, '.wrs', 'config.json');
 }
 
 /**
@@ -105,15 +95,10 @@ function writeConfigFile(configPath, updates) {
  */
 export function saveLastSelection(selection, isGlobal, baseDir) {
   const base = baseDir || (isGlobal ? os.homedir() : process.cwd());
-  const configPath = path.join(base, '.wr-ai', 'config.json');
+  const configPath = path.join(base, '.wrs', 'config.json');
 
   const lastSelection = {
-    commands: selection.commands || [],
     skills: selection.skills || [],
-    agents: selection.agents || [],
-    hooks: selection.hooks || [],
-    mcpServers: selection.mcpServers || [],
-    lspServices: selection.lspServices || [],
     timestamp: new Date().toISOString(),
   };
 
@@ -128,7 +113,7 @@ export function saveLastSelection(selection, isGlobal, baseDir) {
  */
 export function getLastSelection(isGlobal, baseDir) {
   const base = baseDir || (isGlobal ? os.homedir() : process.cwd());
-  const configPath = path.join(base, '.wr-ai', 'config.json');
+  const configPath = path.join(base, '.wrs', 'config.json');
   const config = readConfigFile(configPath);
   return config.lastSelection || null;
 }

@@ -1,87 +1,50 @@
-// tests/commands/sync.test.js
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { saveLastSelection, getLastSelection } from '../../src/lib/config.js';
+import { resolveSkillsToSync } from '../../src/commands/sync.js';
 
-describe('sync command - lastSelection fallback', () => {
+describe('sync command - skills history', () => {
   let tempDir;
   let originalCwd;
-  let globalConfigPath;
-  let originalGlobalConfig;
 
   beforeEach(() => {
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wr-ai-test-'));
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wrs-sync-'));
     originalCwd = process.cwd();
     process.chdir(tempDir);
-
-    // Backup global config
-    globalConfigPath = path.join(os.homedir(), '.wr-ai', 'config.json');
-    if (fs.existsSync(globalConfigPath)) {
-      originalGlobalConfig = fs.readFileSync(globalConfigPath, 'utf-8');
-    }
   });
 
   afterEach(() => {
     process.chdir(originalCwd);
     fs.rmSync(tempDir, { recursive: true, force: true });
-
-    // Restore global config
-    if (originalGlobalConfig) {
-      fs.writeFileSync(globalConfigPath, originalGlobalConfig);
-    } else if (fs.existsSync(globalConfigPath)) {
-      fs.rmSync(globalConfigPath, { force: true });
-    }
   });
 
-  it('should find global config when local does not exist', () => {
-    // Save to global config
-    const selection = {
-      commands: ['test-cmd'],
-      skills: [],
-      agents: [],
-      hooks: [],
-      mcpServers: [],
-      lspServices: [],
-    };
-    saveLastSelection(selection, true);
-
-    // Try to get local config (should not exist)
+  it('should store only skills in local lastSelection', () => {
+    saveLastSelection({ skills: ['code-review'] }, false, tempDir);
     const localSelection = getLastSelection(false, tempDir);
-    assert.strictEqual(localSelection, null);
-
-    // Get global config (should exist)
-    const globalSelection = getLastSelection(true);
-    assert.ok(globalSelection);
-    assert.deepStrictEqual(globalSelection.commands, ['test-cmd']);
+    assert.deepStrictEqual(localSelection.skills, ['code-review']);
+    assert.strictEqual(Object.hasOwn(localSelection, 'commands'), false);
   });
 
-  it('should prefer local config over global when both exist', () => {
-    // Save to global config
-    saveLastSelection({
-      commands: ['global-cmd'],
-      skills: [],
-      agents: [],
-      hooks: [],
-      mcpServers: [],
-      lspServices: [],
-    }, true);
-
-    // Save to local config
-    saveLastSelection({
-      commands: ['local-cmd'],
-      skills: [],
-      agents: [],
-      hooks: [],
-      mcpServers: [],
-      lspServices: [],
-    }, false, tempDir);
-
-    // Get local config (should return local, not global)
-    const localSelection = getLastSelection(false, tempDir);
-    assert.ok(localSelection);
-    assert.deepStrictEqual(localSelection.commands, ['local-cmd']);
+  it('should store only skills in global lastSelection', () => {
+    saveLastSelection({ skills: ['nextjs'] }, true, tempDir);
+    const globalSelection = getLastSelection(true, tempDir);
+    assert.deepStrictEqual(globalSelection.skills, ['nextjs']);
   });
+});
+
+it('resolveSkillsToSync - 只保留远程仍然存在的 skills', () => {
+  assert.deepStrictEqual(
+    resolveSkillsToSync({ skills: ['code-review', 'missing'] }, ['code-review', 'nextjs']),
+    ['code-review']
+  );
+});
+
+it('resolveSkillsToSync - 没有可同步项时返回空数组', () => {
+  assert.deepStrictEqual(
+    resolveSkillsToSync({ skills: ['missing'] }, ['code-review']),
+    []
+  );
 });

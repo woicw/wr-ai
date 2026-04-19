@@ -1,171 +1,147 @@
-// src/commands/sync.js
-import { getOrigin, getPlatform, getLastSelection } from '../lib/config.js';
-import { resolveTargetDirectories, isValidPlatformName, updateGitignore } from '../lib/filesystem.js';
-import { resolveSource } from '../lib/source.js';
+import path from 'node:path';
+import { checkbox } from '@inquirer/prompts';
 import * as c from 'yoctocolors';
 import ora from 'ora';
-import { MAX_DISPLAY_ITEMS, OPTION_VALUES } from '../utils/constants.js';
-import { log } from '../utils/logger.js';
-import { readConfigLists, parseSelection } from '../utils/parser.js';
-import { mergeFileConfigs, mergeMcpConfig, mergeLspConfig } from '../utils/merger.js';
+import { getOrigin, getPlatform, getLastSelection, saveLastSelection } from '../lib/config.js';
+import { resolveTargetDirectories, isValidPlatformName, updateGitignore } from '../lib/filesystem.js';
+import { resolveSource } from '../lib/source.js';
+import { MAX_DISPLAY_ITEMS } from '../utils/constants.js';
 import { handleCancelError } from '../utils/error-handler.js';
+import { log } from '../utils/logger.js';
+import { syncSkillDirectory } from '../utils/merger.js';
+import { readSkillList } from '../utils/parser.js';
+
+export function resolveSkillsToSync(lastSelection, remoteSkills) {
+  return (lastSelection?.skills || []).filter((skill) => remoteSkills.includes(skill));
+}
+
+function buildPromptChoices(remoteSkills) {
+  return remoteSkills.map((skill) => ({
+    name: c.green(skill),
+    value: skill,
+    description: c.dim(`skills/${skill}/`),
+  }));
+}
+
+async function promptForSkills(remoteSkills) {
+  if (remoteSkills.length === 0) {
+    log.warn('远程仓库中没有可同步的 skills');
+    process.exit(1);
+  }
+
+  const selectedSkills = await checkbox({
+    message: c.bold('请选择要同步的 skills:'),
+    choices: buildPromptChoices(remoteSkills),
+    loop: false,
+  });
+
+  if (selectedSkills.length === 0) {
+    log.warn('未选择任何 skill');
+    process.exit(1);
+  }
+
+  return selectedSkills;
+}
+
+function buildSuccessMessage(selectedSkills, addedSkills, updatedSkills, targetPathPrefix) {
+  let message = `已同步 ${selectedSkills.length} 个 skill 到 ${targetPathPrefix}/:\n`;
+
+  if (addedSkills.length > 0) {
+    message += c.green(`  新增: ${addedSkills.length} 个\n`);
+  }
+
+  if (updatedSkills.length > 0) {
+    message += c.yellow(`  更新: ${updatedSkills.length} 个\n`);
+  }
+
+  const displaySkills = selectedSkills.slice(0, MAX_DISPLAY_ITEMS).map((skill) => `  • skills/${skill}/`);
+  message += displaySkills.join('\n');
+
+  if (selectedSkills.length > MAX_DISPLAY_ITEMS) {
+    message += `\n  ... 还有 ${selectedSkills.length - MAX_DISPLAY_ITEMS} 个`;
+  }
+
+  return message;
+}
 
 /**
- * 同步上次选择的配置（无需重新选择）
+ * 同步上次选择的 skills，必要时回退到交互选择
  * @param {Object} options - 命令选项
  * @param {boolean} [options.global] - 是否同步全局配置
  * @param {string} [options.platform] - 指定平台目录
  */
 export async function handleSync(options = {}) {
-  let isGlobal = options.global || false;
-
-  // 读取上次保存的选择，如果本地没有则尝试全局
-  let lastSelection = getLastSelection(isGlobal);
-  if (!lastSelection && !isGlobal) {
-    // 本地没有找到，尝试全局配置
-    lastSelection = getLastSelection(true);
-    if (lastSelection) {
-      isGlobal = true;
-      log.info('本地未找到配置，使用全局配置');
-    }
-  }
-
-  if (!lastSelection) {
-    log.error(isGlobal
-      ? '未找到全局配置的历史选择，请先运行 "wr-ai init -g" 或 "wr-ai update -g"'
-      : '未找到本地或全局配置的历史选择，请先运行 "wr-ai init" 或 "wr-ai update"');
-    process.exit(1);
-  }
-
+  const isGlobal = options.global || false;
+  const lastSelection = getLastSelection(isGlobal);
   const origin = getOrigin();
+
   if (!origin) {
-    log.error('请先使用 "wr-ai set github <url>" 设置 GitHub 地址');
+    log.error('请先使用 "wrs set github <url>" 设置 GitHub 地址');
     process.exit(1);
   }
 
-  const spinner = ora('正在同步配置...').start();
+  if (options.platform && !isValidPlatformName(options.platform)) {
+    log.error('平台名称只能包含字母、数字、连字符和下划线');
+    process.exit(1);
+  }
+
+  const spinner = ora('正在同步 skills...').start();
 
   try {
-    const { sourcePath, srcBaseDir } = await resolveSource(origin, spinner);
+    const { sourcePath } = await resolveSource(origin, spinner);
+    const remoteSkills = readSkillList(sourcePath);
 
-    // 读取配置列表
-    const configLists = readConfigLists(sourcePath);
-    const {
-      commands, skills, agents, hooks,
-      mcpServers, lspServices,
-      hasMcp, hasLsp,
-      mcpFile, lspFile,
-      commandsDir, skillsDir, agentsDir, hooksDir,
-    } = configLists;
+    let selectedSkills = resolveSkillsToSync(lastSelection, remoteSkills);
 
-    // 根据保存的选择构建 selected 数组
-    const selected = [];
+    if (selectedSkills.length === 0) {
+      if ((lastSelection?.skills || []).length > 0) {
+        log.warn('历史记录中的 skills 在远程仓库中已不存在，将改为手动选择');
+      }
 
-    for (const cmd of lastSelection.commands || []) {
-      if (commands.includes(cmd)) selected.push(`${OPTION_VALUES.CMD_PREFIX}${cmd}`);
-    }
-    for (const skill of lastSelection.skills || []) {
-      if (skills.includes(skill)) selected.push(`${OPTION_VALUES.SKILL_PREFIX}${skill}`);
-    }
-    for (const agent of lastSelection.agents || []) {
-      if (agents.includes(agent)) selected.push(`${OPTION_VALUES.AGENT_PREFIX}${agent}`);
-    }
-    for (const hook of lastSelection.hooks || []) {
-      if (hooks.includes(hook)) selected.push(`${OPTION_VALUES.HOOK_PREFIX}${hook}`);
-    }
-    for (const mcp of lastSelection.mcpServers || []) {
-      if (mcpServers.includes(mcp)) selected.push(`${OPTION_VALUES.MCP_PREFIX}${mcp}`);
-    }
-    for (const lsp of lastSelection.lspServices || []) {
-      if (lspServices.includes(lsp)) selected.push(`${OPTION_VALUES.LSP_PREFIX}${lsp}`);
+      selectedSkills = await promptForSkills(remoteSkills);
+      saveLastSelection({ skills: selectedSkills }, isGlobal);
+    } else {
+      log.info(`将同步 ${selectedSkills.length} 个 skill（上次选择于 ${lastSelection.timestamp}）`);
     }
 
-    if (selected.length === 0) {
-      log.warn('上次选择的配置项在远程仓库中已不存在，请重新运行 "wr-ai init" 或 "wr-ai update"');
-      process.exit(1);
-    }
-
-    // 显示将要同步的内容
-    log.info(`将同步 ${selected.length} 个配置项（上次选择于 ${lastSelection.timestamp}）`);
-
-    // 解析选择
-    const selection = parseSelection(selected, commands, skills, agents, hooks, mcpServers, lspServices);
-
-    // 确定目标目录
-    const fallbackPlatform = getPlatform();
-    if (options.platform && !isValidPlatformName(options.platform)) {
-      log.error('平台名称只能包含字母、数字、连字符和下划线');
-      process.exit(1);
-    }
     const targetDirs = resolveTargetDirectories({
       global: isGlobal,
       platform: options.platform,
-      fallbackPlatform,
+      fallbackPlatform: getPlatform(),
       cwd: process.cwd(),
     });
 
-    // 执行合并
-    for (const target of targetDirs) {
-      const { platform, dirName, claudeDir, targetPathPrefix } = target;
-      const syncSpinner = ora(`正在同步到 ${dirName}/...`).start();
+    const skillsDir = path.join(sourcePath, 'skills');
 
-      const fileResults = mergeFileConfigs(
-        selection.selectedCommands,
-        selection.selectedSkills,
-        selection.selectedAgents,
-        selection.selectedHooks,
-        { commandsDir, skillsDir, agentsDir, hooksDir },
-        claudeDir,
-        srcBaseDir
+    for (const target of targetDirs) {
+      const syncSpinner = ora(`正在同步到 ${target.dirName}/...`).start();
+      const addedSkills = [];
+      const updatedSkills = [];
+
+      for (const skill of selectedSkills) {
+        const status = syncSkillDirectory(skillsDir, skill, target.claudeDir);
+        if (status === 'updated') {
+          updatedSkills.push(skill);
+        } else {
+          addedSkills.push(skill);
+        }
+      }
+
+      syncSpinner.succeed(
+        buildSuccessMessage(selectedSkills, addedSkills, updatedSkills, target.targetPathPrefix)
       );
 
-      const { addedItems, updatedItems, copiedItems } = fileResults;
-
-      if (selection.selectMcp && hasMcp) {
-        const status = mergeMcpConfig(mcpFile, claudeDir, selection.selectedMcpServers, selection.selectAllMcp, srcBaseDir);
-        if (status === 'updated') updatedItems.push('.mcp.json');
-        else addedItems.push('.mcp.json');
-        copiedItems.push('.mcp.json');
-      }
-
-      if (selection.selectLsp && hasLsp) {
-        const status = mergeLspConfig(lspFile, claudeDir, selection.selectedLspServices, selection.selectAllLsp, srcBaseDir);
-        if (status === 'updated') updatedItems.push('.lsp.json');
-        else addedItems.push('.lsp.json');
-        copiedItems.push('.lsp.json');
-      }
-
-      const targetPath = `${targetPathPrefix}/`;
-      let successMsg = `已同步 ${copiedItems.length} 个项目到 ${targetPath}:\n`;
-      if (addedItems.length > 0) {
-        successMsg += c.green(`  新增: ${addedItems.length} 个\n`);
-      }
-      if (updatedItems.length > 0) {
-        successMsg += c.yellow(`  更新: ${updatedItems.length} 个\n`);
-      }
-      if (copiedItems.length <= MAX_DISPLAY_ITEMS) {
-        successMsg += copiedItems.map((f) => `  • ${f}`).join('\n');
-      } else {
-        successMsg += copiedItems.slice(0, MAX_DISPLAY_ITEMS).map((f) => `  • ${f}`).join('\n');
-        successMsg += `\n  ... 还有 ${copiedItems.length - MAX_DISPLAY_ITEMS} 个`;
-      }
-      syncSpinner.succeed(successMsg);
-
-      if (!isGlobal && updateGitignore(process.cwd(), false, platform)) {
-        log.info(`已添加 .${platform} 到 .gitignore`);
+      if (updateGitignore(process.cwd(), isGlobal, target.platform)) {
+        log.info(`已添加 .${target.platform} 到 .gitignore`);
       }
     }
   } catch (error) {
-    if (error.name === 'CancelError' || error.name === 'ExitPromptError' ||
-        error.message?.includes('SIGINT') || error.message?.includes('cancel') ||
-        error.message?.includes('取消') || error.message?.includes('操作已取消')) {
-      spinner.stop();
-      log.info('操作已取消');
-      process.exit(0);
-    } else {
-      spinner.fail(`同步失败: ${error.message}`);
-      if (error.stack) {
-        log.error(`错误堆栈: ${error.stack}`);
+    try {
+      handleCancelError(error, spinner);
+    } catch (handledError) {
+      spinner.fail(`同步失败: ${handledError.message}`);
+      if (handledError.stack) {
+        log.error(`错误堆栈: ${handledError.stack}`);
       }
       process.exit(1);
     }
