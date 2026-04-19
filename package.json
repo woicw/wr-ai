@@ -1,5 +1,5 @@
 {
-  "name": "wrs",
+  "name": "wr-ai",
   "version": "4.0.0",
   "description": "一个用于管理 AI 配置的 CLI 工具",
   "type": "module",
