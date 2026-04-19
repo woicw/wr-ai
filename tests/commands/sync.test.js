@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { saveLastSelection, getLastSelection } from '../../src/lib/config.js';
-import { resolveSkillsToSync } from '../../src/commands/sync.js';
+import { normalizePromptSelection, resolveSkillsToSync } from '../../src/commands/sync.js';
 
 describe('sync command - skills history', () => {
   let tempDir;
@@ -46,5 +46,12 @@ it('resolveSkillsToSync - 没有可同步项时返回空数组', () => {
   assert.deepStrictEqual(
     resolveSkillsToSync({ skills: ['missing'] }, ['code-review']),
     []
+  );
+});
+
+it('normalizePromptSelection - 选择全部时展开为全部远程 skills', () => {
+  assert.deepStrictEqual(
+    normalizePromptSelection(['__all_skills__'], ['code-review', 'nextjs']),
+    ['code-review', 'nextjs']
   );
 });

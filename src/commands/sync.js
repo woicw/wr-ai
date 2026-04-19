@@ -11,16 +11,33 @@ import { log } from '../utils/logger.js';
 import { syncSkillDirectory } from '../utils/merger.js';
 import { readSkillList } from '../utils/parser.js';
 
+const ALL_SKILLS_VALUE = '__all_skills__';
+
 export function resolveSkillsToSync(lastSelection, remoteSkills) {
   return (lastSelection?.skills || []).filter((skill) => remoteSkills.includes(skill));
 }
 
-function buildPromptChoices(remoteSkills) {
-  return remoteSkills.map((skill) => ({
+export function normalizePromptSelection(selectedValues, remoteSkills) {
+  if (selectedValues.includes(ALL_SKILLS_VALUE)) {
+    return [...remoteSkills];
+  }
+
+  return selectedValues;
+}
+
+export function buildPromptChoices(remoteSkills) {
+  return [
+    {
+      name: c.bold(c.cyan('⚡ 全部 skills')),
+      value: ALL_SKILLS_VALUE,
+      description: c.dim(`选择全部 ${remoteSkills.length} 个 skill`),
+    },
+    ...remoteSkills.map((skill) => ({
     name: c.green(skill),
     value: skill,
     description: c.dim(`skills/${skill}/`),
-  }));
+    })),
+  ];
 }
 
 async function promptForSkills(remoteSkills) {
@@ -29,11 +46,13 @@ async function promptForSkills(remoteSkills) {
     process.exit(1);
   }
 
-  const selectedSkills = await checkbox({
+  const selectedValues = await checkbox({
     message: c.bold('请选择要同步的 skills:'),
     choices: buildPromptChoices(remoteSkills),
     loop: false,
   });
+
+  const selectedSkills = normalizePromptSelection(selectedValues, remoteSkills);
 
   if (selectedSkills.length === 0) {
     log.warn('未选择任何 skill');
