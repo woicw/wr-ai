@@ -135,10 +135,19 @@ export async function handleSync(options = {}) {
     if (selectedEntries.some((e) => !e.isLocal)) {
       assertNpxAvailable();
     }
+    const failedEntries = [];
     // Serial: ensureRemoteInCache uses a shared stage dir (see src/lib/installer.js).
     for (const entry of selectedEntries.filter((e) => !e.isLocal)) {
-      await ensureRemoteInCache(entry, { cacheDir, refresh });
+      try {
+        await ensureRemoteInCache(entry, { cacheDir, refresh });
+      } catch (error) {
+        failedEntries.push({ entry, error });
+        log.warn(`跳过 ${entry.name} (${entry.source}): ${error.message.split('\n')[0]}`);
+      }
     }
+    const failedNames = new Set(failedEntries.map(({ entry }) => entry.name));
+    const syncableEntries = selectedEntries.filter((entry) => !failedNames.has(entry.name));
+    const syncableTargetNames = syncableEntries.map((entry) => entry.installName ?? entry.name);
 
     const targetDirs = resolveTargetDirectories({
       global: isGlobal,
@@ -152,7 +161,7 @@ export async function handleSync(options = {}) {
       const addedSkills = [];
       const updatedSkills = [];
 
-      for (const entry of selectedEntries) {
+      for (const entry of syncableEntries) {
         const sourceDir = resolveSkillSource(entry, { cloneRoot: repoDir, cacheDir });
         const targetName = entry.installName ?? entry.name;
         const status = syncSkillDirectoryFromPath(sourceDir, targetName, target.claudeDir);
@@ -164,11 +173,18 @@ export async function handleSync(options = {}) {
       }
 
       syncSpinner.succeed(
-        buildSuccessMessage(selectedTargetNames, addedSkills, updatedSkills, target.targetPathPrefix)
+        buildSuccessMessage(syncableTargetNames, addedSkills, updatedSkills, target.targetPathPrefix)
       );
 
       if (updateGitignore(process.cwd(), isGlobal, target.platform)) {
         log.info(`已添加 .${target.platform} 到 .gitignore`);
+      }
+    }
+
+    if (failedEntries.length > 0) {
+      log.warn(`${failedEntries.length} 个远程 skill 未能同步，已跳过：`);
+      for (const { entry, error } of failedEntries) {
+        log.warn(`  • ${entry.name} (${entry.source} / ${entry.skillId}) — ${error.message.split('\n')[0]}`);
       }
     }
   } catch (error) {
