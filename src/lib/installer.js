@@ -73,6 +73,7 @@ export async function ensureRemoteInCache(entry, options) {
     }
 
     fs.mkdirSync(path.dirname(cachePath), { recursive: true });
+    // produced and cachePath are always on the same filesystem (~/.wrs/cache/).
     fs.renameSync(produced, cachePath);
   } finally {
     fs.rmSync(stageDir, { recursive: true, force: true });

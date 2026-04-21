@@ -1,11 +1,12 @@
-import path from 'node:path';
 import ora from 'ora';
 import { getOrigin, getPlatform } from '../lib/config.js';
 import { resolveTargetDirectories, isValidPlatformName, updateGitignore } from '../lib/filesystem.js';
+import { ensureRemoteInCache, resolveSkillSource, assertNpxAvailable } from '../lib/installer.js';
 import { resolveSource } from '../lib/source.js';
+import { CACHE_DIR } from '../utils/constants.js';
 import { log } from '../utils/logger.js';
-import { readSkillList } from '../utils/parser.js';
-import { syncSkillDirectory } from '../utils/merger.js';
+import { readManifestEntries } from '../utils/parser.js';
+import { syncSkillDirectoryFromPath } from '../utils/merger.js';
 
 function formatDestinations(targetDirs, relativePath) {
   return targetDirs
@@ -53,9 +54,12 @@ export async function handleAdd(name, options = {}) {
   const spinner = ora(`正在查找 "${name}"...`).start();
 
   try {
-    const { sourcePath } = await resolveSource(origin, spinner);
-    const skills = readSkillList(sourcePath);
-    const skillName = findSkillOrThrow(skills, name);
+    const { repoDir } = await resolveSource(origin, spinner);
+    const entries = readManifestEntries(repoDir);
+    const entry = entries.find((e) => e.name === name);
+    if (!entry) {
+      throw new Error(`未找到 skill: ${name}`);
+    }
 
     const isGlobal = options.global || false;
     const fallbackPlatform = getPlatform();
@@ -76,12 +80,18 @@ export async function handleAdd(name, options = {}) {
       log.info(`检测到多个 AI 配置目录，将同步到: ${targetDirs.map((target) => target.dirName).join(', ')}`);
     }
 
-    const skillsDir = path.join(sourcePath, 'skills');
-    for (const target of targetDirs) {
-      syncSkillDirectory(skillsDir, skillName, target.claudeDir);
+    if (!entry.isLocal) {
+      assertNpxAvailable();
+      await ensureRemoteInCache(entry, { cacheDir: CACHE_DIR, refresh: false });
     }
 
-    spinner.succeed(`已添加 skill: ${skillName} → ${formatDestinations(targetDirs, `skills/${skillName}/`)}`);
+    const sourceDir = resolveSkillSource(entry, { cloneRoot: repoDir, cacheDir: CACHE_DIR });
+    const targetName = entry.installName ?? entry.name;
+    for (const target of targetDirs) {
+      syncSkillDirectoryFromPath(sourceDir, targetName, target.claudeDir);
+    }
+
+    spinner.succeed(`已添加 skill: ${targetName} → ${formatDestinations(targetDirs, `skills/${targetName}/`)}`);
     afterAddTargets(isGlobal, targetDirs);
   } catch (error) {
     if (
@@ -100,8 +110,9 @@ export async function handleAdd(name, options = {}) {
     spinner.fail(`添加失败: ${error.message}`);
 
     try {
-      const { sourcePath } = await resolveSource(origin);
-      listAvailableSkills(readSkillList(sourcePath));
+      const { repoDir } = await resolveSource(origin);
+      const entries = readManifestEntries(repoDir);
+      listAvailableSkills(entries.map((e) => e.name));
     } catch {
       // Ignore follow-up listing failures after the main error is already reported.
     }

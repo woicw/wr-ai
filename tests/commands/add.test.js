@@ -33,6 +33,15 @@ function seedCachedRepo(rootDir) {
 
   writeFile(path.join(workDir, 'awesome-claude', 'skills', 'code-review', 'SKILL.md'), '# code-review\n');
   writeFile(path.join(workDir, 'awesome-claude', 'skills', 'nextjs', 'SKILL.md'), '# nextjs\n');
+  writeFile(
+    path.join(workDir, 'awesome-claude', 'skills.manifest.json'),
+    JSON.stringify({
+      skills: [
+        { name: 'code-review', source: 'local' },
+        { name: 'nextjs', source: 'local' },
+      ],
+    }, null, 2)
+  );
 
   execFileSync('git', ['add', '.'], { cwd: workDir });
   execFileSync('git', ['commit', '-m', 'seed repo'], { cwd: workDir });
