@@ -128,9 +128,11 @@ export async function handleSync(options = {}) {
     const selectedEntries = selectedSkills
       .map((name) => selectedEntryMap.get(name))
       .filter(Boolean);
+    const selectedTargetNames = selectedEntries.map((entry) => entry.installName ?? entry.name);
 
     const cacheDir = CACHE_DIR;
     const refresh = options.refresh === true;
+    // Serial: ensureRemoteInCache uses a shared stage dir (see src/lib/installer.js).
     for (const entry of selectedEntries.filter((e) => !e.isLocal)) {
       await ensureRemoteInCache(entry, { cacheDir, refresh });
     }
@@ -159,7 +161,7 @@ export async function handleSync(options = {}) {
       }
 
       syncSpinner.succeed(
-        buildSuccessMessage(selectedSkills, addedSkills, updatedSkills, target.targetPathPrefix)
+        buildSuccessMessage(selectedTargetNames, addedSkills, updatedSkills, target.targetPathPrefix)
       );
 
       if (updateGitignore(process.cwd(), isGlobal, target.platform)) {

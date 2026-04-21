@@ -13,6 +13,9 @@ function parseEntry(raw) {
   if (source !== 'local' && (typeof source !== 'string' || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(source))) {
     throw new Error(`skill '${name}' has invalid source: ${JSON.stringify(source)}`);
   }
+  if (raw.installName !== undefined && raw.installName !== null && (typeof raw.installName !== 'string' || raw.installName.length === 0)) {
+    throw new Error(`skill '${name}' has invalid installName: ${JSON.stringify(raw.installName)}`);
+  }
   return {
     name,
     source,

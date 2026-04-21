@@ -69,3 +69,15 @@ test('loadManifest - rejects multi-segment source paths', () => {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('loadManifest - rejects empty-string installName', () => {
+  const root = writeManifest(tmp('wrs-manifest-empty-install-'), {
+    version: 2,
+    skills: [{ name: 'oops', source: 'x/y', skillId: 'oops', installName: '' }],
+  });
+  try {
+    assert.throws(() => loadManifest(root), /invalid installName/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
