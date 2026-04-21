@@ -10,6 +10,11 @@ npm install -g wrs
 pnpm add -g wrs
 ```
 
+### 前置要求
+
+- **本地 skills 专用**：如果仓库中所有 skills 均标记为 `source: "local"`，则无需额外依赖。
+- **包含远程 skills**：如果源仓库中有任何远程 skills（`source: "owner/repo"`），则需要可用的 Node.js 和 npx 环境，以便首次物化时使用。
+
 ## 快速开始
 
 ```bash
@@ -41,7 +46,17 @@ wrs sync
 | `wrs list` | 列出远程仓库中的可用 skills |
 | `wrs add <name>` | 添加单个 skill |
 | `wrs sync` | 同步上次选择的 skills；首次使用或历史失效时进入交互选择 |
+| `wrs sync --refresh` | 忽略缓存，从上游重新拉取所有远程 skill |
+| `wrs cache clean` | 清空本地 skill 缓存 |
 | `wrs set github <url>` | 设置 GitHub 仓库地址 |
+
+## 源仓库要求
+
+`wrs` 从源仓库的 `awesome-claude/skills.manifest.json` 读取 skill 清单：
+
+- `source: "local"` 的条目直接从源仓库 clone 复制
+- 其他条目（`source: "owner/repo"` + `skillId`）由 `wrs` 在第一次 sync 时通过 `npx skills add` 物化到 `~/.wrs/cache/skills/<name>/`，后续命中缓存
+- 如果 manifest 中任何条目是远程的，用户机器需要可用的 Node/npx
 
 ### 通用选项
 
@@ -131,6 +146,20 @@ wrs set github user/repo
 ```
 
 `lastSelection` 只保存 skills 历史，用于后续的 `wrs sync`。
+
+## 本地缓存
+
+远程 skill 物化后保存在用户目录：
+
+```text
+~/.wrs/
+├── config.json               # 全局配置 + lastSelection
+├── templates/                # 源仓库 git clone
+└── cache/
+    └── skills/<skillId>/     # 远程 skill 物化缓存
+```
+
+`wrs sync --refresh` 会重建缓存；`wrs cache clean` 会清空整个 `~/.wrs/cache/`。
 
 ## 合并行为
 
