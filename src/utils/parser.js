@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { loadManifest } from '../lib/manifest.js';
 
 /**
  * 读取配置源中的技能目录列表
@@ -17,4 +18,8 @@ export function readSkillList(sourcePath) {
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name)
     .sort((left, right) => left.localeCompare(right));
+}
+
+export function readManifestEntries(sourcePath) {
+  return loadManifest(sourcePath);
 }
