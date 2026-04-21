@@ -50,6 +50,7 @@ program
   .description("同步上次选择的技能")
   .option("-g, --global", "同步全局配置")
   .option("-p, --platform <platform>", "指定平台目录")
+  .option("--refresh", "忽略缓存，从上游重新拉取所有远程 skill")
   .action(handleSync);
 
 program.parse();
