@@ -1,6 +1,6 @@
-import { test } from 'node:test';
+import { test, describe, it } from 'node:test';
 import assert from 'node:assert';
-import { formatSkillListOutput } from '../../src/commands/list.js';
+import { formatSkillListOutput, formatManifestListOutput } from '../../src/commands/list.js';
 
 test('formatSkillListOutput - formats a skills-only list with wrs usage', () => {
   const output = formatSkillListOutput('awesome-claude', ['code-review', 'nextjs']);
@@ -20,4 +20,17 @@ test('formatSkillListOutput - handles an empty skills list', () => {
   assert.match(output, /awesome-claude/);
   assert.match(output, /Skills \(0\)/);
   assert.match(output, /暂无可用技能/);
+});
+
+describe('formatManifestListOutput', () => {
+  it('groups entries into Local and Remote sections', () => {
+    const output = formatManifestListOutput('ai-config', [
+      { name: 'woic', source: 'local', isLocal: true },
+      { name: 'vite', source: 'antfu/skills', skillId: 'vite', isLocal: false },
+      { name: 'vue', source: 'antfu/skills', skillId: 'vue', isLocal: false },
+    ]);
+    assert.match(output, /Local \(1\)/);
+    assert.match(output, /Remote \(2\)/);
+    assert.match(output, /vite.*antfu\/skills/);
+  });
 });
