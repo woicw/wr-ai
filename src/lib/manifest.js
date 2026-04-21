@@ -10,7 +10,7 @@ function parseEntry(raw) {
   if (typeof name !== 'string' || name.length === 0) {
     throw new Error('each skill entry requires a non-empty string name');
   }
-  if (source !== 'local' && (typeof source !== 'string' || !source.includes('/'))) {
+  if (source !== 'local' && (typeof source !== 'string' || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(source))) {
     throw new Error(`skill '${name}' has invalid source: ${JSON.stringify(source)}`);
   }
   return {
@@ -37,6 +37,7 @@ export function classifyBySource(entries) {
   const local = [];
   const remote = [];
   for (const entry of entries) {
+    // Accepts both parsed entries (isLocal set) and raw manifest objects (derived from source).
     const isLocal = entry.isLocal ?? entry.source === 'local';
     (isLocal ? local : remote).push(entry);
   }

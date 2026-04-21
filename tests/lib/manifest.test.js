@@ -57,3 +57,15 @@ test('loadManifest - throws on malformed source', () => {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('loadManifest - rejects multi-segment source paths', () => {
+  const root = writeManifest(tmp('wrs-manifest-multiseg-'), {
+    version: 2,
+    skills: [{ name: 'oops', source: 'a/b/c' }],
+  });
+  try {
+    assert.throws(() => loadManifest(root), /invalid source/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
