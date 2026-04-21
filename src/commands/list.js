@@ -3,7 +3,7 @@ import { resolveSource } from '../lib/source.js';
 import * as c from 'yoctocolors';
 import ora from 'ora';
 import { log } from '../utils/logger.js';
-import { readSkillList, readManifestEntries } from '../utils/parser.js';
+import { readManifestEntries } from '../utils/parser.js';
 import { classifyBySource } from '../lib/manifest.js';
 import { handleCancelError } from '../utils/error-handler.js';
 
@@ -42,15 +42,23 @@ export function formatManifestListOutput(sourceDir, entries) {
     '',
     c.bold(c.green(`Local (${local.length})`)),
   ];
-  local.forEach((entry, idx) => {
-    const prefix = idx === local.length - 1 ? '└─' : '├─';
-    lines.push(`${prefix} ${c.green(entry.name)}`);
-  });
+  if (local.length === 0) {
+    lines.push(c.dim('  (none)'));
+  } else {
+    local.forEach((entry, idx) => {
+      const prefix = idx === local.length - 1 ? '└─' : '├─';
+      lines.push(`${prefix} ${c.green(entry.name)}`);
+    });
+  }
   lines.push('', c.bold(c.cyan(`Remote (${remote.length})`)));
-  remote.forEach((entry, idx) => {
-    const prefix = idx === remote.length - 1 ? '└─' : '├─';
-    lines.push(`${prefix} ${c.cyan(entry.name)}  ${c.dim(`← ${entry.source}`)}`);
-  });
+  if (remote.length === 0) {
+    lines.push(c.dim('  (none)'));
+  } else {
+    remote.forEach((entry, idx) => {
+      const prefix = idx === remote.length - 1 ? '└─' : '├─';
+      lines.push(`${prefix} ${c.cyan(entry.name)}  ${c.dim(`← ${entry.source}`)}`);
+    });
+  }
   lines.push(
     '',
     '  使用方式:',
