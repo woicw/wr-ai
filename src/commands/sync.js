@@ -1,15 +1,15 @@
-import path from 'node:path';
 import { checkbox } from '@inquirer/prompts';
 import * as c from 'yoctocolors';
 import ora from 'ora';
 import { getOrigin, getPlatform, getLastSelection, saveLastSelection } from '../lib/config.js';
 import { resolveTargetDirectories, isValidPlatformName, updateGitignore } from '../lib/filesystem.js';
+import { ensureRemoteInCache, resolveSkillSource } from '../lib/installer.js';
 import { resolveSource } from '../lib/source.js';
-import { MAX_DISPLAY_ITEMS } from '../utils/constants.js';
+import { CACHE_DIR, MAX_DISPLAY_ITEMS } from '../utils/constants.js';
 import { handleCancelError } from '../utils/error-handler.js';
 import { log } from '../utils/logger.js';
-import { syncSkillDirectory } from '../utils/merger.js';
-import { readSkillList } from '../utils/parser.js';
+import { syncSkillDirectoryFromPath } from '../utils/merger.js';
+import { readManifestEntries } from '../utils/parser.js';
 
 const ALL_SKILLS_VALUE = '__all_skills__';
 
@@ -108,19 +108,31 @@ export async function handleSync(options = {}) {
 
   try {
     const { sourcePath } = await resolveSource(origin, spinner);
-    const remoteSkills = readSkillList(sourcePath);
+    const entries = readManifestEntries(sourcePath);
+    const entryNames = entries.map((e) => e.name);
 
-    let selectedSkills = resolveSkillsToSync(lastSelection, remoteSkills);
+    let selectedSkills = resolveSkillsToSync(lastSelection, entryNames);
 
     if (selectedSkills.length === 0) {
       if ((lastSelection?.skills || []).length > 0) {
         log.warn('历史记录中的 skills 在远程仓库中已不存在，将改为手动选择');
       }
 
-      selectedSkills = await promptForSkills(remoteSkills);
+      selectedSkills = await promptForSkills(entryNames);
       saveLastSelection({ skills: selectedSkills }, isGlobal);
     } else {
       log.info(`将同步 ${selectedSkills.length} 个 skill（上次选择于 ${lastSelection.timestamp}）`);
+    }
+
+    const selectedEntryMap = new Map(entries.map((e) => [e.name, e]));
+    const selectedEntries = selectedSkills
+      .map((name) => selectedEntryMap.get(name))
+      .filter(Boolean);
+
+    const cacheDir = CACHE_DIR;
+    const refresh = options.refresh === true;
+    for (const entry of selectedEntries.filter((e) => !e.isLocal)) {
+      await ensureRemoteInCache(entry, { cacheDir, refresh });
     }
 
     const targetDirs = resolveTargetDirectories({
@@ -130,19 +142,19 @@ export async function handleSync(options = {}) {
       cwd: process.cwd(),
     });
 
-    const skillsDir = path.join(sourcePath, 'skills');
-
     for (const target of targetDirs) {
       const syncSpinner = ora(`正在同步到 ${target.dirName}/...`).start();
       const addedSkills = [];
       const updatedSkills = [];
 
-      for (const skill of selectedSkills) {
-        const status = syncSkillDirectory(skillsDir, skill, target.claudeDir);
+      for (const entry of selectedEntries) {
+        const sourceDir = resolveSkillSource(entry, { cloneRoot: sourcePath, cacheDir });
+        const targetName = entry.installName ?? entry.name;
+        const status = syncSkillDirectoryFromPath(sourceDir, targetName, target.claudeDir);
         if (status === 'updated') {
-          updatedSkills.push(skill);
+          updatedSkills.push(targetName);
         } else {
-          addedSkills.push(skill);
+          addedSkills.push(targetName);
         }
       }
 
