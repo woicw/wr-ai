@@ -51,6 +51,13 @@ export function formatManifestListOutput(sourceDir, entries) {
     const prefix = idx === remote.length - 1 ? '└─' : '├─';
     lines.push(`${prefix} ${c.cyan(entry.name)}  ${c.dim(`← ${entry.source}`)}`);
   });
+  lines.push(
+    '',
+    '  使用方式:',
+    '    wrs add <name>            添加指定技能',
+    '    wrs list                  列出可用技能',
+    ''
+  );
   return lines.join('\n');
 }
 
