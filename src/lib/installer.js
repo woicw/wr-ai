@@ -1,7 +1,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
+import { execSync, spawn } from 'node:child_process';
 import { CACHE_SKILLS_DIR } from '../utils/constants.js';
+
+export function assertNpxAvailable() {
+  try {
+    execSync('command -v npx', { stdio: 'ignore', shell: '/bin/sh' });
+  } catch {
+    throw new Error('Missing npx. Install Node.js (ships with npx) before running wrs sync.');
+  }
+}
 
 export function resolveSkillSource(entry, { cloneRoot, cacheDir }) {
   if (entry.isLocal) {

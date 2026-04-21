@@ -3,7 +3,7 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { resolveSkillSource, ensureRemoteInCache } from '../../src/lib/installer.js';
+import { resolveSkillSource, ensureRemoteInCache, assertNpxAvailable } from '../../src/lib/installer.js';
 
 function scratch(prefix) {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -134,4 +134,9 @@ test('ensureRemoteInCache - cleans stage when runner rejects', async () => {
   } finally {
     fs.rmSync(cacheDir, { recursive: true, force: true });
   }
+});
+
+test('assertNpxAvailable - does not throw when npx is present on PATH', () => {
+  // On CI and dev machines Node ships with npx, so this should succeed.
+  assertNpxAvailable();
 });

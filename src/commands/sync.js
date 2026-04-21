@@ -3,7 +3,7 @@ import * as c from 'yoctocolors';
 import ora from 'ora';
 import { getOrigin, getPlatform, getLastSelection, saveLastSelection } from '../lib/config.js';
 import { resolveTargetDirectories, isValidPlatformName, updateGitignore } from '../lib/filesystem.js';
-import { ensureRemoteInCache, resolveSkillSource } from '../lib/installer.js';
+import { ensureRemoteInCache, resolveSkillSource, assertNpxAvailable } from '../lib/installer.js';
 import { resolveSource } from '../lib/source.js';
 import { CACHE_DIR, MAX_DISPLAY_ITEMS } from '../utils/constants.js';
 import { handleCancelError } from '../utils/error-handler.js';
@@ -132,6 +132,9 @@ export async function handleSync(options = {}) {
 
     const cacheDir = CACHE_DIR;
     const refresh = options.refresh === true;
+    if (selectedEntries.some((e) => !e.isLocal)) {
+      assertNpxAvailable();
+    }
     // Serial: ensureRemoteInCache uses a shared stage dir (see src/lib/installer.js).
     for (const entry of selectedEntries.filter((e) => !e.isLocal)) {
       await ensureRemoteInCache(entry, { cacheDir, refresh });
