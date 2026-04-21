@@ -7,34 +7,6 @@ import { readManifestEntries } from '../utils/parser.js';
 import { classifyBySource } from '../lib/manifest.js';
 import { handleCancelError } from '../utils/error-handler.js';
 
-export function formatSkillListOutput(sourceDir, skills) {
-  const lines = [
-    c.bold(`📦 ${sourceDir}`),
-    '',
-    c.bold(c.green(`🧠 Skills (${skills.length})`)),
-    '',
-  ];
-
-  if (skills.length === 0) {
-    lines.push(c.dim('暂无可用技能'));
-  } else {
-    skills.forEach((skill, index) => {
-      const prefix = index === skills.length - 1 ? '└─' : '├─';
-      lines.push(`${prefix} ${c.green(skill)}`);
-    });
-  }
-
-  lines.push(
-    '',
-    '  使用方式:',
-    '    wrs add <name>            添加指定技能',
-    '    wrs list                  列出可用技能',
-    ''
-  );
-
-  return lines.join('\n');
-}
-
 export function formatManifestListOutput(sourceDir, entries) {
   const { local, remote } = classifyBySource(entries);
   const lines = [
