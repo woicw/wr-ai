@@ -5,6 +5,7 @@ import { handleSet } from "./commands/set.js";
 import { handleList } from "./commands/list.js";
 import { handleAdd } from "./commands/add.js";
 import { handleSync } from "./commands/sync.js";
+import { handleCacheClean } from "./commands/cache.js";
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
@@ -52,5 +53,8 @@ program
   .option("-p, --platform <platform>", "指定平台目录")
   .option("--refresh", "忽略缓存，从上游重新拉取所有远程 skill")
   .action(handleSync);
+
+const cacheCommand = program.command("cache").description("管理 wrs 本地缓存");
+cacheCommand.command("clean").description("清空远程 skill 缓存").action(handleCacheClean);
 
 program.parse();
