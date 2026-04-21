@@ -117,3 +117,21 @@ test('ensureRemoteInCache - refresh=true rebuilds even when cache present', asyn
     fs.rmSync(cacheDir, { recursive: true, force: true });
   }
 });
+
+test('ensureRemoteInCache - cleans stage when runner rejects', async () => {
+  const cacheDir = scratch('wrs-cache-fail-');
+  const stageDir = path.join(cacheDir, 'stage');
+  try {
+    await assert.rejects(
+      () =>
+        ensureRemoteInCache(
+          { isLocal: false, name: 'x', skillId: 'x', repoUrl: 'https://github.com/x/y' },
+          { cacheDir, runNpxSkillsAdd: async () => { throw new Error('boom'); } }
+        ),
+      /boom/
+    );
+    assert.strictEqual(fs.existsSync(stageDir), false);
+  } finally {
+    fs.rmSync(cacheDir, { recursive: true, force: true });
+  }
+});
