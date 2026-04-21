@@ -118,6 +118,31 @@ test('ensureRemoteInCache - refresh=true rebuilds even when cache present', asyn
   }
 });
 
+test('ensureRemoteInCache - accepts produced dir that differs from skillId', async () => {
+  const cacheDir = scratch('wrs-cache-rename-');
+  try {
+    await ensureRemoteInCache(
+      { isLocal: false, name: 'react:components', skillId: 'react:components', repoUrl: 'https://github.com/x/y' },
+      {
+        cacheDir,
+        refresh: false,
+        runNpxSkillsAdd: async ({ stageDir }) => {
+          // Simulate npx writing to a sanitized name that differs from skillId.
+          const fake = path.join(stageDir, '.claude', 'skills', 'react-components');
+          fs.mkdirSync(fake, { recursive: true });
+          fs.writeFileSync(path.join(fake, 'SKILL.md'), '# renamed');
+        },
+      }
+    );
+    assert.strictEqual(
+      fs.readFileSync(path.join(cacheDir, 'skills', 'react:components', 'SKILL.md'), 'utf-8'),
+      '# renamed'
+    );
+  } finally {
+    fs.rmSync(cacheDir, { recursive: true, force: true });
+  }
+});
+
 test('ensureRemoteInCache - cleans stage when runner rejects', async () => {
   const cacheDir = scratch('wrs-cache-fail-');
   const stageDir = path.join(cacheDir, 'stage');

@@ -65,12 +65,19 @@ export async function ensureRemoteInCache(entry, options) {
 
     await runNpxSkillsAdd({ stageDir, repoUrl: entry.repoUrl, skillId: entry.skillId, agent });
 
-    // npx skills add --agent claude-code writes to <stageDir>/.claude/skills/<skillId>/.
-    // If `agent` is ever changed, update this path accordingly.
-    const produced = path.join(stageDir, '.claude', 'skills', entry.skillId);
-    if (!fs.existsSync(produced)) {
-      throw new Error(`npx skills add did not produce expected dir: ${produced}`);
+    // npx skills add --agent claude-code writes to <stageDir>/.claude/skills/<name>/.
+    // The output directory name may differ from entry.skillId (e.g. colon sanitization,
+    // upstream SKILL.md name field diverging from the directory name). Discover it.
+    const skillsRoot = path.join(stageDir, '.claude', 'skills');
+    const producedName = fs.existsSync(skillsRoot)
+      ? fs.readdirSync(skillsRoot).find((name) =>
+          fs.statSync(path.join(skillsRoot, name)).isDirectory()
+        )
+      : null;
+    if (!producedName) {
+      throw new Error(`npx skills add produced no skill under ${skillsRoot}`);
     }
+    const produced = path.join(skillsRoot, producedName);
 
     fs.mkdirSync(path.dirname(cachePath), { recursive: true });
     // produced and cachePath are always on the same filesystem (~/.wrs/cache/).
