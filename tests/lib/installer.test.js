@@ -24,14 +24,22 @@ test('resolveSkillSource - returns local clone path for local entries', () => {
 
 test('resolveSkillSource - returns cache path for remote entries', () => {
   const cacheDir = scratch('wrs-cache-');
-  const entry = { isLocal: false, name: 'vite', skillId: 'vite', installName: null };
-  const resolved = resolveSkillSource(entry, { cloneRoot: '/unused', cacheDir });
-  assert.strictEqual(resolved, path.join(cacheDir, 'skills', 'vite'));
+  try {
+    const entry = { isLocal: false, name: 'vite', skillId: 'vite', installName: null };
+    const resolved = resolveSkillSource(entry, { cloneRoot: '/unused', cacheDir });
+    assert.strictEqual(resolved, path.join(cacheDir, 'skills', 'vite'));
+  } finally {
+    fs.rmSync(cacheDir, { recursive: true, force: true });
+  }
 });
 
 test('resolveSkillSource - honors installName for remote entries', () => {
   const cacheDir = scratch('wrs-cache-');
-  const entry = { isLocal: false, name: 'skill-creator-anthropics', skillId: 'skill-creator', installName: 'skill-creator-anthropics' };
-  const resolved = resolveSkillSource(entry, { cloneRoot: '/unused', cacheDir });
-  assert.strictEqual(resolved, path.join(cacheDir, 'skills', 'skill-creator-anthropics'));
+  try {
+    const entry = { isLocal: false, name: 'skill-creator-anthropics', skillId: 'skill-creator', installName: 'skill-creator-anthropics' };
+    const resolved = resolveSkillSource(entry, { cloneRoot: '/unused', cacheDir });
+    assert.strictEqual(resolved, path.join(cacheDir, 'skills', 'skill-creator-anthropics'));
+  } finally {
+    fs.rmSync(cacheDir, { recursive: true, force: true });
+  }
 });
