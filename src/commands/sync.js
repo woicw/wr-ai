@@ -107,8 +107,8 @@ export async function handleSync(options = {}) {
   const spinner = ora('正在同步 skills...').start();
 
   try {
-    const { sourcePath } = await resolveSource(origin, spinner);
-    const entries = readManifestEntries(sourcePath);
+    const { repoDir } = await resolveSource(origin, spinner);
+    const entries = readManifestEntries(repoDir);
     const entryNames = entries.map((e) => e.name);
 
     let selectedSkills = resolveSkillsToSync(lastSelection, entryNames);
@@ -148,7 +148,7 @@ export async function handleSync(options = {}) {
       const updatedSkills = [];
 
       for (const entry of selectedEntries) {
-        const sourceDir = resolveSkillSource(entry, { cloneRoot: sourcePath, cacheDir });
+        const sourceDir = resolveSkillSource(entry, { cloneRoot: repoDir, cacheDir });
         const targetName = entry.installName ?? entry.name;
         const status = syncSkillDirectoryFromPath(sourceDir, targetName, target.claudeDir);
         if (status === 'updated') {

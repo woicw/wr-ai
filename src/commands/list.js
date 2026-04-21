@@ -79,8 +79,8 @@ export async function handleList() {
   const spinner = ora('正在获取技能列表...').start();
 
   try {
-    const { sourceDir, sourcePath } = await resolveSource(origin, spinner);
-    const entries = readManifestEntries(sourcePath);
+    const { sourceDir, repoDir } = await resolveSource(origin, spinner);
+    const entries = readManifestEntries(repoDir);
 
     if (entries.length === 0) {
       log.info('manifest 为空');
