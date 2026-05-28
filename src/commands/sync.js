@@ -14,15 +14,17 @@ import { readManifestEntries } from '../utils/parser.js';
 const ALL_SKILLS_VALUE = '__all_skills__';
 
 export function resolveSkillsToSync(lastSelection, remoteSkills) {
+  if (lastSelection?.allSkills) {
+    return [...remoteSkills];
+  }
   return (lastSelection?.skills || []).filter((skill) => remoteSkills.includes(skill));
 }
 
-export function normalizePromptSelection(selectedValues, remoteSkills) {
+export function selectionFromPrompt(selectedValues) {
   if (selectedValues.includes(ALL_SKILLS_VALUE)) {
-    return [...remoteSkills];
+    return { allSkills: true, skills: [] };
   }
-
-  return selectedValues;
+  return { allSkills: false, skills: selectedValues };
 }
 
 export function buildPromptChoices(remoteSkills) {
@@ -52,14 +54,12 @@ async function promptForSkills(remoteSkills) {
     loop: false,
   });
 
-  const selectedSkills = normalizePromptSelection(selectedValues, remoteSkills);
-
-  if (selectedSkills.length === 0) {
+  if (selectedValues.length === 0) {
     log.warn('未选择任何 skill');
     process.exit(1);
   }
 
-  return selectedSkills;
+  return selectionFromPrompt(selectedValues);
 }
 
 function buildSuccessMessage(selectedSkills, addedSkills, updatedSkills, targetPathPrefix) {
@@ -118,8 +118,11 @@ export async function handleSync(options = {}) {
         log.warn('历史记录中的 skills 在远程仓库中已不存在，将改为手动选择');
       }
 
-      selectedSkills = await promptForSkills(entryNames);
-      saveLastSelection({ skills: selectedSkills }, isGlobal);
+      const selection = await promptForSkills(entryNames);
+      saveLastSelection(selection, isGlobal);
+      selectedSkills = resolveSkillsToSync(selection, entryNames);
+    } else if (lastSelection?.allSkills) {
+      log.info(`将同步全部 ${selectedSkills.length} 个 skill（上次选择于 ${lastSelection.timestamp}）`);
     } else {
       log.info(`将同步 ${selectedSkills.length} 个 skill（上次选择于 ${lastSelection.timestamp}）`);
     }

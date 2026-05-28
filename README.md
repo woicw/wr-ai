@@ -140,12 +140,15 @@ wrs set github user/repo
   "platform": "claude",
   "lastSelection": {
     "skills": ["code-review", "nextjs"],
+    "allSkills": false,
     "timestamp": "2026-04-19T12:00:00.000Z"
   }
 }
 ```
 
-`lastSelection` 只保存 skills 历史，用于后续的 `wrs sync`。
+`lastSelection` 保存上次选择，用于后续的 `wrs sync`：
+- `skills`：具体被勾选的 skill 名称
+- `allSkills`：若为 `true` 则忽略 `skills`，每次 sync 都取当前远程的完整列表（适合"⚡ 全部 skills"选项，远程新增 skill 也会自动跟上）
 
 ## 本地缓存
 

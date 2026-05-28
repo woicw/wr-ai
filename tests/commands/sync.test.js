@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { saveLastSelection, getLastSelection } from '../../src/lib/config.js';
-import { normalizePromptSelection, resolveSkillsToSync } from '../../src/commands/sync.js';
+import { selectionFromPrompt, resolveSkillsToSync } from '../../src/commands/sync.js';
 
 describe('sync command - skills history', () => {
   let tempDir;
@@ -49,9 +49,23 @@ it('resolveSkillsToSync - 没有可同步项时返回空数组', () => {
   );
 });
 
-it('normalizePromptSelection - 选择全部时展开为全部远程 skills', () => {
+it('resolveSkillsToSync - allSkills 标记会展开为当前完整远程列表', () => {
   assert.deepStrictEqual(
-    normalizePromptSelection(['__all_skills__'], ['code-review', 'nextjs']),
-    ['code-review', 'nextjs']
+    resolveSkillsToSync({ allSkills: true, skills: [] }, ['code-review', 'nextjs', 'new-one']),
+    ['code-review', 'nextjs', 'new-one']
+  );
+});
+
+it('selectionFromPrompt - 选中 sentinel 时返回 allSkills 标记', () => {
+  assert.deepStrictEqual(
+    selectionFromPrompt(['__all_skills__']),
+    { allSkills: true, skills: [] }
+  );
+});
+
+it('selectionFromPrompt - 普通选择保留具体 skill 名称', () => {
+  assert.deepStrictEqual(
+    selectionFromPrompt(['code-review', 'nextjs']),
+    { allSkills: false, skills: ['code-review', 'nextjs'] }
   );
 });

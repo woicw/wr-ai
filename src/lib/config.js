@@ -99,6 +99,7 @@ export function saveLastSelection(selection, isGlobal, baseDir) {
 
   const lastSelection = {
     skills: selection.skills || [],
+    allSkills: selection.allSkills === true,
     timestamp: new Date().toISOString(),
   };
 
